@@ -1,30 +1,28 @@
-import React from 'react';
 import {
+  AlertTriangle,
+  BarChart3,
+  Brain,
+  Database,
+  ExternalLink,
+  FileText,
+  Globe,
+  Image,
   LayoutDashboard,
   MapPin,
-  Brain,
-  Star,
-  FileText,
-  Image,
-  TrendingUp,
-  BarChart3,
-  AlertTriangle,
-  Zap,
   Mic,
-  Globe,
-  Settings,
-  Users,
-  Palette,
-  ChevronRight,
-  Database,
   Search,
+  Settings,
+  Star,
+  TrendingUp,
   UserCheck,
-  ExternalLink
+  Users,
+  Zap
 } from 'lucide-react';
+import React from 'react';
+import { useTheme } from '../../contexts/ThemeContext';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
-import { useTheme } from '../../contexts/ThemeContext';
 
 interface NavItem {
   id: string;
@@ -122,21 +120,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       >
         <div className="flex flex-col h-full">
           {/* Header */}
-          <div className="p-6 border-b border-white/20 dark:border-white/10">
-            <div className="flex items-center gap-3">
-              <img
-                src={theme === 'light' ? '/LOGO.png' : '/logodrk.png'}
-                alt="OK Local GBP Copilot"
-                className="h-8 w-auto"
-              />
-              <div>
-                <h2 className="font-semibold text-gray-900 dark:text-white text-sm">
-                  GBP Copilot
-                </h2>
-                <p className="text-xs text-gray-600 dark:text-gray-400">Local Marketing Platform</p>
-              </div>
-            </div>
-          </div>
+          
 
           {/* Navigation */}
           <div className="flex-1 overflow-y-auto p-4 space-y-6">
