@@ -1,0 +1,217 @@
+import React from 'react';
+import { MapPin, Phone, Globe, Star, MessageSquare, TrendingUp, Plus, CheckCircle, AlertCircle } from 'lucide-react';
+import { Card } from '../ui/Card';
+import { Badge } from '../ui/Badge';
+import { Button } from '../ui/Button';
+import { Location } from '../../types';
+
+const mockLocations: Location[] = [
+  {
+    id: '1',
+    name: 'Main Street Pizza',
+    address: '123 Main Street, Downtown, NY 10001',
+    phone: '+1 (555) 123-4567',
+    website: 'https://mainstreetpizza.com',
+    rating: 4.8,
+    reviews: 247,
+    avgRank: 2.1,
+    status: 'active',
+    verified: true
+  },
+  {
+    id: '2',
+    name: 'Oak Avenue Bistro',
+    address: '456 Oak Avenue, Midtown, NY 10002',
+    phone: '+1 (555) 234-5678',
+    website: 'https://oakavenuebistro.com',
+    rating: 4.6,
+    reviews: 189,
+    avgRank: 3.4,
+    status: 'active',
+    verified: true
+  },
+  {
+    id: '3',
+    name: 'Downtown Deli',
+    address: '789 Broadway, Financial District, NY 10003',
+    phone: '+1 (555) 345-6789',
+    website: 'https://downtowndeli.com',
+    rating: 4.9,
+    reviews: 156,
+    avgRank: 1.8,
+    status: 'pending',
+    verified: false
+  }
+];
+
+export const Locations: React.FC = () => {
+  const LocationCard: React.FC<{ location: Location }> = ({ location }) => (
+    <Card hover className="group">
+      <div className="flex items-start justify-between mb-4">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-2">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{location.name}</h3>
+            <div className="flex items-center gap-1">
+              {location.verified ? (
+                <CheckCircle size={16} className="text-green-500" />
+              ) : (
+                <AlertCircle size={16} className="text-yellow-500" />
+              )}
+              <Badge 
+                variant={location.status === 'active' ? 'success' : 'warning'}
+                size="sm"
+              >
+                {location.status}
+              </Badge>
+            </div>
+          </div>
+          <div className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+            <div className="flex items-center gap-2">
+              <MapPin size={14} />
+              <span>{location.address}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Phone size={14} />
+              <span>{location.phone}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Globe size={14} />
+              <a href={location.website} className="text-[#f45a4e] hover:underline">
+                {location.website.replace('https://', '')}
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+        <div className="text-center">
+          <div className="flex items-center justify-center gap-1 mb-1">
+            <Star size={14} className="text-yellow-500 fill-current" />
+            <span className="font-semibold text-gray-900 dark:text-white">{location.rating}</span>
+          </div>
+          <p className="text-xs text-gray-600 dark:text-gray-400">Rating</p>
+        </div>
+        <div className="text-center">
+          <div className="flex items-center justify-center gap-1 mb-1">
+            <MessageSquare size={14} className="text-blue-500" />
+            <span className="font-semibold text-gray-900 dark:text-white">{location.reviews}</span>
+          </div>
+          <p className="text-xs text-gray-600 dark:text-gray-400">Reviews</p>
+        </div>
+        <div className="text-center">
+          <div className="flex items-center justify-center gap-1 mb-1">
+            <TrendingUp size={14} className="text-green-500" />
+            <span className="font-semibold text-gray-900 dark:text-white">{location.avgRank}</span>
+          </div>
+          <p className="text-xs text-gray-600 dark:text-gray-400">Avg Rank</p>
+        </div>
+      </div>
+
+      <div className="flex gap-2 mt-4">
+        <Button variant="primary" size="sm" className="flex-1">
+          Manage
+        </Button>
+        <Button variant="secondary" size="sm">
+          Sync GBP
+        </Button>
+      </div>
+    </Card>
+  );
+
+  const SummaryCard: React.FC<{
+    title: string;
+    value: string | number;
+    icon: React.ElementType;
+    gradient: string;
+  }> = ({ title, value, icon: Icon, gradient }) => (
+    <Card hover>
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">{title}</p>
+          <p className="text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
+        </div>
+        <div className={`p-3 rounded-full ${gradient}`}>
+          <Icon size={20} className="text-white" />
+        </div>
+      </div>
+    </Card>
+  );
+
+  if (mockLocations.length === 0) {
+    return (
+      <div className="text-center py-16">
+        <div className="max-w-md mx-auto">
+          <div className="mb-8">
+            <div className="inline-flex p-6 bg-gradient-to-r from-[#f45a4e] to-[#e53e3e] rounded-full mb-4">
+              <MapPin size={32} className="text-white" />
+            </div>
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
+            No Locations Yet
+          </h2>
+          <p className="text-gray-600 dark:text-gray-400 mb-8">
+            Start by adding your first business location to begin managing your Google Business Profile.
+          </p>
+          <Button icon={Plus} size="lg">
+            Add Your First Location
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-8">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
+            Locations
+          </h1>
+          <p className="text-gray-600 dark:text-gray-400 mt-1">
+            Manage all your business locations in one place
+          </p>
+        </div>
+        <Button icon={Plus}>
+          Add Location
+        </Button>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+        <SummaryCard
+          title="Total Locations"
+          value={mockLocations.length}
+          icon={MapPin}
+          gradient="bg-gradient-to-r from-[#667eea] to-[#764ba2]"
+        />
+        <SummaryCard
+          title="Average Rating"
+          value={(mockLocations.reduce((sum, loc) => sum + loc.rating, 0) / mockLocations.length).toFixed(1)}
+          icon={Star}
+          gradient="bg-gradient-to-r from-[#f093fb] to-[#f5576c]"
+        />
+        <SummaryCard
+          title="Total Reviews"
+          value={mockLocations.reduce((sum, loc) => sum + loc.reviews, 0).toLocaleString()}
+          icon={MessageSquare}
+          gradient="bg-gradient-to-r from-[#11998e] to-[#38ef7d]"
+        />
+        <SummaryCard
+          title="Verified Locations"
+          value={mockLocations.filter(loc => loc.verified).length}
+          icon={CheckCircle}
+          gradient="bg-gradient-to-r from-[#f45a4e] to-[#e53e3e]"
+        />
+      </div>
+
+      {/* Locations Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 lg:gap-6">
+        {mockLocations.map((location) => (
+          <LocationCard key={location.id} location={location} />
+        ))}
+      </div>
+    </div>
+  );
+};
