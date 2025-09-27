@@ -19,7 +19,6 @@ import {
   Zap
 } from 'lucide-react';
 import React from 'react';
-import { useTheme } from '../../contexts/ThemeContext';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
@@ -29,7 +28,7 @@ interface NavItem {
   label: string;
   icon: React.ElementType;
   badge?: string;
-  badgeVariant?: 'default' | 'warning' | 'error' | 'success' | 'info' | 'gradient';
+  badgeVariant?: 'warning' | 'error' | 'success' | 'info' | 'gradient';
 }
 
 interface SidebarProps {
@@ -69,8 +68,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isOpen,
   onClose,
 }) => {
-  const { theme } = useTheme();
-
   const NavItemComponent: React.FC<{ item: NavItem }> = ({ item }) => (
     <button
       onClick={() => {
@@ -92,7 +89,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <span className="font-medium text-sm">{item.label}</span>
       {item.badge && (
         <Badge
-          variant={item.badgeVariant || 'default'}
+          variant={item.badgeVariant || 'info'}
           size="sm"
           className="ml-auto"
         >
@@ -119,9 +116,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         }`}
       >
         <div className="flex flex-col h-full">
-          {/* Header */}
-          
-
           {/* Navigation */}
           <div className="flex-1 overflow-y-auto p-4 space-y-6">
             {/* Management Section */}

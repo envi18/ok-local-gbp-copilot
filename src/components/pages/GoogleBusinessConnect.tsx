@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { ExternalLink, AlertCircle, CheckCircle, RefreshCw } from 'lucide-react';
+import { AlertCircle, CheckCircle, ExternalLink, RefreshCw } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
 import { googleAuthService } from '../../lib/googleAuth';
 import { supabase } from '../../lib/supabase';
+
 
 export const GoogleBusinessConnect: React.FC = () => {
   const [isConnecting, setIsConnecting] = useState(false);
