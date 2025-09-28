@@ -1,8 +1,6 @@
 // src/lib/googleBusinessProfileService.ts
 // Google Business Profile API service for managing business data
 
-import { googleAuthService } from './googleAuth';
-
 // Type definitions for Google Business Profile API responses
 export interface BusinessAccount {
   name: string;
@@ -160,32 +158,52 @@ export interface GoogleBusinessProfilePost {
 }
 
 class GoogleBusinessProfileService {
-  private readonly baseUrl = 'https://mybusiness.googleapis.com/v4';
-  private readonly baseUrlGBP = 'https://mybusiness.googleapis.com/v4';
+  private readonly proxyUrl = '/.netlify/functions/google-business-proxy';
+
+  /**
+   * Make a request through the proxy function
+   */
+  private async makeProxyRequest(
+    endpoint: string, 
+    userId: string, 
+    httpMethod: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
+    data?: any
+  ) {
+    try {
+      const requestBody = {
+        user_id: userId,
+        endpoint,
+        method: httpMethod, // Pass the HTTP method to the proxy
+        ...(data && { data })
+      };
+
+      const response = await fetch(this.proxyUrl, {
+        method: 'POST', // Always POST to the proxy function
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Proxy request error:', error);
+      throw error;
+    }
+  }
 
   /**
    * Get all business accounts accessible by the authenticated user
    */
   async getBusinessAccounts(userId: string): Promise<BusinessAccount[]> {
     try {
-      const accessToken = await googleAuthService.getValidAccessToken(userId);
-      if (!accessToken) {
-        throw new Error('No valid access token available');
-      }
-
-      const response = await fetch(`${this.baseUrl}/accounts`, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch accounts: ${response.status} ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      return data.accounts || [];
+      const result = await this.makeProxyRequest('/accounts', userId);
+      return result.accounts || [];
     } catch (error) {
       console.error('Error fetching business accounts:', error);
       throw error;
@@ -197,24 +215,8 @@ class GoogleBusinessProfileService {
    */
   async getBusinessLocations(userId: string, accountName: string): Promise<BusinessLocation[]> {
     try {
-      const accessToken = await googleAuthService.getValidAccessToken(userId);
-      if (!accessToken) {
-        throw new Error('No valid access token available');
-      }
-
-      const response = await fetch(`${this.baseUrl}/${accountName}/locations`, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch locations: ${response.status} ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      return data.locations || [];
+      const result = await this.makeProxyRequest(`/${accountName}/locations`, userId);
+      return result.locations || [];
     } catch (error) {
       console.error('Error fetching business locations:', error);
       throw error;
@@ -226,24 +228,8 @@ class GoogleBusinessProfileService {
    */
   async getLocationReviews(userId: string, locationName: string): Promise<BusinessReview[]> {
     try {
-      const accessToken = await googleAuthService.getValidAccessToken(userId);
-      if (!accessToken) {
-        throw new Error('No valid access token available');
-      }
-
-      const response = await fetch(`${this.baseUrlGBP}/${locationName}/reviews`, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch reviews: ${response.status} ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      return data.reviews || [];
+      const result = await this.makeProxyRequest(`/${locationName}/reviews`, userId);
+      return result.reviews || [];
     } catch (error) {
       console.error('Error fetching location reviews:', error);
       throw error;
@@ -255,17 +241,12 @@ class GoogleBusinessProfileService {
    */
   async getLocationInsights(userId: string, locationName: string): Promise<LocationInsights> {
     try {
-      const accessToken = await googleAuthService.getValidAccessToken(userId);
-      if (!accessToken) {
-        throw new Error('No valid access token available');
-      }
-
       // Get insights for the last 90 days
       const endDate = new Date();
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - 90);
 
-      const requestBody = {
+      const requestData = {
         locationNames: [locationName],
         basicRequest: {
           metricRequests: [
@@ -284,21 +265,14 @@ class GoogleBusinessProfileService {
         },
       };
 
-      const response = await fetch(`${this.baseUrlGBP}/accounts/*/locations:reportInsights`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch insights: ${response.status} ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      return data;
+      const result = await this.makeProxyRequest(
+        '/accounts/*/locations:reportInsights', 
+        userId, 
+        'POST', 
+        requestData
+      );
+      
+      return result;
     } catch (error) {
       console.error('Error fetching location insights:', error);
       throw error;
@@ -310,26 +284,12 @@ class GoogleBusinessProfileService {
    */
   async replyToReview(userId: string, reviewName: string, replyText: string): Promise<boolean> {
     try {
-      const accessToken = await googleAuthService.getValidAccessToken(userId);
-      if (!accessToken) {
-        throw new Error('No valid access token available');
-      }
-
-      const response = await fetch(`${this.baseUrlGBP}/${reviewName}/reply`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          comment: replyText,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to reply to review: ${response.status} ${response.statusText}`);
-      }
-
+      await this.makeProxyRequest(
+        `/${reviewName}/reply`,
+        userId,
+        'PUT',
+        { comment: replyText }
+      );
       return true;
     } catch (error) {
       console.error('Error replying to review:', error);
@@ -342,28 +302,47 @@ class GoogleBusinessProfileService {
    */
   async createLocationPost(userId: string, locationName: string, postData: GoogleBusinessProfilePost): Promise<boolean> {
     try {
-      const accessToken = await googleAuthService.getValidAccessToken(userId);
-      if (!accessToken) {
-        throw new Error('No valid access token available');
-      }
-
-      const response = await fetch(`${this.baseUrlGBP}/${locationName}/localPosts`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(postData),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to create post: ${response.status} ${response.statusText}`);
-      }
-
+      await this.makeProxyRequest(
+        `/${locationName}/localPosts`,
+        userId,
+        'POST',
+        postData
+      );
       return true;
     } catch (error) {
       console.error('Error creating location post:', error);
       return false;
+    }
+  }
+
+  /**
+   * Update location information
+   */
+  async updateLocation(userId: string, locationName: string, locationData: Partial<BusinessLocation>): Promise<BusinessLocation> {
+    try {
+      const result = await this.makeProxyRequest(
+        `/${locationName}`,
+        userId,
+        'PUT',
+        locationData
+      );
+      return result;
+    } catch (error) {
+      console.error('Error updating location:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get detailed information for a specific location
+   */
+  async getLocationDetails(userId: string, locationName: string): Promise<BusinessLocation> {
+    try {
+      const result = await this.makeProxyRequest(`/${locationName}`, userId);
+      return result;
+    } catch (error) {
+      console.error('Error fetching location details:', error);
+      throw error;
     }
   }
 
@@ -378,16 +357,38 @@ class GoogleBusinessProfileService {
     const periods = location.regularHours.periods;
     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     
-    return periods.map(period => {
-      const openDay = dayNames[parseInt(period.openDay)];
-      const closeDay = dayNames[parseInt(period.closeDay)];
+    const hoursMap = new Map<string, string>();
+    
+    periods.forEach(period => {
+      const openDay = dayNames[parseInt(period.openDay)] || period.openDay;
+      const closeDay = dayNames[parseInt(period.closeDay)] || period.closeDay;
+      const openTime = this.formatTime(period.openTime);
+      const closeTime = this.formatTime(period.closeTime);
       
       if (openDay === closeDay) {
-        return `${openDay}: ${period.openTime} - ${period.closeTime}`;
+        hoursMap.set(openDay, `${openTime} - ${closeTime}`);
       } else {
-        return `${openDay} ${period.openTime} - ${closeDay} ${period.closeTime}`;
+        hoursMap.set(openDay, `${openTime} - ${closeTime} (closes ${closeDay})`);
       }
-    }).join(', ');
+    });
+
+    return Array.from(hoursMap.entries())
+      .map(([day, hours]) => `${day}: ${hours}`)
+      .join(', ');
+  }
+
+  /**
+   * Helper method to format time strings
+   */
+  private formatTime(time: string): string {
+    if (!time || time.length !== 4) return time;
+    
+    const hours = parseInt(time.substring(0, 2), 10);
+    const minutes = time.substring(2, 4);
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const displayHours = hours % 12 || 12;
+    
+    return `${displayHours}:${minutes} ${ampm}`;
   }
 
   /**
@@ -413,6 +414,105 @@ class GoogleBusinessProfileService {
     ].filter(Boolean);
     
     return parts.join(', ');
+  }
+
+  /**
+   * Helper method to compare local business data with Google data
+   */
+  compareWithLocalData(googleLocation: BusinessLocation, localLocation: any) {
+    const discrepancies = [];
+
+    // Compare basic info
+    if (googleLocation.locationName !== localLocation.name) {
+      discrepancies.push({
+        field: 'name',
+        local: localLocation.name,
+        google: googleLocation.locationName
+      });
+    }
+
+    if (googleLocation.primaryPhone !== localLocation.phone) {
+      discrepancies.push({
+        field: 'phone',
+        local: localLocation.phone,
+        google: googleLocation.primaryPhone
+      });
+    }
+
+    // Compare address
+    const googleAddress = this.formatAddress(googleLocation);
+    if (googleAddress !== localLocation.address) {
+      discrepancies.push({
+        field: 'address',
+        local: localLocation.address,
+        google: googleAddress
+      });
+    }
+
+    return discrepancies;
+  }
+
+  /**
+   * Calculate review statistics
+   */
+  calculateReviewStats(reviews: BusinessReview[]) {
+    if (!reviews.length) {
+      return {
+        averageRating: 0,
+        totalReviews: 0,
+        ratingDistribution: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 },
+        responseRate: 0
+      };
+    }
+
+    const totalRating = reviews.reduce((sum, review) => 
+      sum + (review.starRating || 0), 0
+    );
+    
+    const averageRating = totalRating / reviews.length;
+    
+    const ratingDistribution = reviews.reduce((dist, review) => {
+      const rating = review.starRating || 0;
+      if (rating >= 1 && rating <= 5) {
+        dist[rating] = (dist[rating] || 0) + 1;
+      }
+      return dist;
+    }, { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 } as Record<number, number>);
+
+    const reviewsWithReplies = reviews.filter(review => review.reviewReply);
+    const responseRate = (reviewsWithReplies.length / reviews.length) * 100;
+
+    return {
+      averageRating: Math.round(averageRating * 10) / 10,
+      totalReviews: reviews.length,
+      ratingDistribution,
+      responseRate: Math.round(responseRate)
+    };
+  }
+
+  /**
+   * Get business hours in structured format
+   */
+  getStructuredHours(location: BusinessLocation) {
+    if (!location.regularHours?.periods) {
+      return [];
+    }
+
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const hoursMap = new Map();
+
+    location.regularHours.periods.forEach(period => {
+      const day = dayNames[parseInt(period.openDay)] || period.openDay;
+      const openTime = this.formatTime(period.openTime);
+      const closeTime = this.formatTime(period.closeTime);
+      hoursMap.set(day, `${openTime} - ${closeTime}`);
+    });
+
+    return dayNames.map(day => ({
+      day: day,
+      hours: hoursMap.get(day) || 'Closed',
+      isOpen: hoursMap.has(day)
+    }));
   }
 }
 
