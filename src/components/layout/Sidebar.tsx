@@ -3,7 +3,6 @@ import {
   BarChart3,
   Brain,
   Database,
-  ExternalLink,
   FileText,
   Globe,
   Image,
@@ -15,8 +14,9 @@ import {
   Star,
   TrendingUp,
   UserCheck,
+  UserPlus,
   Users,
-  Zap
+  Zap,
 } from 'lucide-react';
 import React from 'react';
 import { Badge } from '../ui/Badge';
@@ -41,7 +41,6 @@ interface SidebarProps {
 const managementItems: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'locations', label: 'Locations', icon: MapPin, badge: '1' },
-  { id: 'google-business', label: 'Google Business', icon: ExternalLink, badge: 'New', badgeVariant: 'success' },
   { id: 'ai-visibility', label: 'AI Visibility', icon: Brain, badge: 'New', badgeVariant: 'gradient' },
   { id: 'reviews', label: 'Reviews', icon: Star, badge: 'Mock', badgeVariant: 'warning' },
   { id: 'posts', label: 'Posts', icon: FileText },
@@ -60,6 +59,7 @@ const settingsItems: NavItem[] = [
   { id: 'admin-setup', label: 'Database Setup', icon: Database },
   { id: 'db-check', label: 'Database Check', icon: Search },
   { id: 'fix-profile', label: 'Fix Profile', icon: UserCheck },
+  { id: 'onboarding', label: 'Onboarding', icon: UserPlus, badge: 'Step-by-step', badgeVariant: 'info' },
 ];
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -80,19 +80,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
           : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
       }`}
     >
+      {/* Icon */}
       <item.icon
         size={18}
         className={`transition-colors ${
           activeSection === item.id ? 'text-white' : 'text-gray-500 dark:text-gray-400 group-hover:text-gray-700 dark:group-hover:text-gray-200'
         }`}
       />
+      {/* Label */}
       <span className="font-medium text-sm">{item.label}</span>
+      {/* Badge */}
       {item.badge && (
-        <Badge
-          variant={item.badgeVariant || 'info'}
-          size="sm"
-          className="ml-auto"
-        >
+        <Badge variant={item.badgeVariant ?? 'info'} size="sm" className="ml-auto">
           {item.badge}
         </Badge>
       )}
@@ -108,7 +107,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           onClick={onClose}
         />
       )}
-
       {/* Sidebar */}
       <aside
         className={`fixed left-0 top-16 h-[calc(100vh-4rem)] w-72 bg-white/80 dark:bg-black/40 backdrop-blur-md border-r border-white/20 dark:border-white/10 z-50 transition-transform duration-300 lg:translate-x-0 ${
@@ -120,30 +118,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className="flex-1 overflow-y-auto p-4 space-y-6">
             {/* Management Section */}
             <div>
-              <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3 px-3">
-                Management
-              </h3>
+              <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3 px-3">Management</h3>
               <nav className="space-y-1">
-                {managementItems.map((item) => (
+                {managementItems.map(item => (
                   <NavItemComponent key={item.id} item={item} />
                 ))}
               </nav>
             </div>
-
             {/* Settings Section */}
             <div>
-              <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3 px-3">
-                Settings & Admin
-              </h3>
+              <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3 px-3">Settings & Admin</h3>
               <nav className="space-y-1">
-                {settingsItems.map((item) => (
+                {settingsItems.map(item => (
                   <NavItemComponent key={item.id} item={item} />
                 ))}
               </nav>
             </div>
           </div>
-
-          {/* Footer */}
+          {/* Sidebar Footer */}
           <div className="p-4 border-t border-white/20 dark:border-white/10">
             <Card className="p-4">
               <div className="flex items-center gap-3 mb-3">
@@ -151,16 +143,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <span className="text-white text-sm font-medium">DU</span>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                    Demo User
-                  </p>
-                  <p className="text-xs text-gray-600 dark:text-gray-400 truncate">
-                    Customer
-                  </p>
+                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">Demo User</p>
+                  <p className="text-xs text-gray-600 dark:text-gray-400 truncate">Customer</p>
                 </div>
               </div>
               <Button variant="secondary" size="sm" className="w-full">
-                <Settings size={14} />
+                <Settings size={14} className="mr-2" />
                 Account Settings
               </Button>
             </Card>

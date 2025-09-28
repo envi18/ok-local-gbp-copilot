@@ -1,9 +1,9 @@
+import { AlertTriangle, Bell, CheckCircle, Clock, MapPin, Search, X } from 'lucide-react';
 import React, { useState } from 'react';
-import { AlertTriangle, Bell, CheckCircle, X, Filter, Search, Clock, MapPin, Star, TrendingDown } from 'lucide-react';
-import { Card } from '../ui/Card';
+import { Alert } from '../../types';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
-import { Alert } from '../../types';
+import { Card } from '../ui/Card';
 
 const mockAlerts: Alert[] = [
   {

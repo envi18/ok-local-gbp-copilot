@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { Star, MessageSquare, Clock, TrendingUp, Filter, Search, MoreVertical, Reply, Flag, Share, Download, Eye, ChevronDown, Calendar, User, ThumbsUp, ThumbsDown, AlertTriangle, AlertCircle } from 'lucide-react';
-import { Card } from '../ui/Card';
+import { AlertCircle, AlertTriangle, ChevronDown, Clock, Copy, Download, Flag, MessageSquare, MoreVertical, Reply, Search, Settings as SettingsIcon, Share, Star, ThumbsUp } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { dataService, type Location, type Profile, type Review } from '../../lib/dataService';
+import { supabase } from '../../lib/supabase';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
-import { dataService, type Review, type Location, type Profile } from '../../lib/dataService';
-import { supabase } from '../../lib/supabase';
+import { Card } from '../ui/Card';
 
 export const Reviews: React.FC = () => {
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -22,9 +22,22 @@ export const Reviews: React.FC = () => {
   const [showReplyModal, setShowReplyModal] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
   const [selectedTemplate, setSelectedTemplate] = useState('');
+  
+  // Get More Reviews section state
+  const [showGetMoreReviews, setShowGetMoreReviews] = useState(false);
+  const [reviewPageSettings, setReviewPageSettings] = useState({
+    backgroundColor: '#ffffff',
+    starThreshold: 3, // 3 stars and below go to internal feedback
+    customMessage: '',
+    logoUrl: ''
+  });
+  const [reviewUrl, setReviewUrl] = useState('');
+  const [qrCodeUrl, setQrCodeUrl] = useState('');
+  const [copiedUrl, setCopiedUrl] = useState(false);
 
   useEffect(() => {
     initializeReviews();
+    generateReviewUrl();
   }, []);
 
   const initializeReviews = async () => {
@@ -62,6 +75,37 @@ export const Reviews: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const generateReviewUrl = () => {
+    // Generate unique review URL using the new domain
+    const baseUrl = 'https://givereviews.to/';
+    const organizationSlug = profile?.organization_id || 'demo-org';
+    const url = `${baseUrl}${organizationSlug}`;
+    setReviewUrl(url);
+    
+    // Generate QR code URL (using a QR code service)
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}`;
+    setQrCodeUrl(qrUrl);
+  };
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedUrl(true);
+      setTimeout(() => setCopiedUrl(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
+
+  const downloadQRCode = () => {
+    const link = document.createElement('a');
+    link.href = qrCodeUrl;
+    link.download = 'review-qr-code.png';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const replyTemplates = [
@@ -345,11 +389,173 @@ export const Reviews: React.FC = () => {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="secondary">Bulk Actions</Button>
-          <Button variant="secondary">Templates</Button>
-          <Button>Generate QR Code</Button>
+          <Button 
+            variant="primary"
+            onClick={() => setShowGetMoreReviews(!showGetMoreReviews)}
+            className="flex items-center gap-2"
+          >
+            <Star size={16} />
+            Get More Reviews
+            <ChevronDown 
+              size={16} 
+              className={`transition-transform ${showGetMoreReviews ? 'rotate-180' : ''}`} 
+            />
+          </Button>
         </div>
       </div>
+
+      {/* Get More Reviews Section */}
+      {showGetMoreReviews && (
+        <Card className="overflow-hidden">
+          <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-blue-500 rounded-lg">
+                <Star size={20} className="text-white" />
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                  Review Request Link
+                </h2>
+                <p className="text-gray-600 dark:text-gray-400">
+                  Share this link with customers to collect more reviews
+                </p>
+              </div>
+            </div>
+
+            <div className="grid lg:grid-cols-2 gap-6">
+              {/* URL and QR Code */}
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Your Review Request URL
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={reviewUrl}
+                      readOnly
+                      className="flex-1 px-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-mono"
+                    />
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => copyToClipboard(reviewUrl)}
+                    >
+                      {copiedUrl ? 'Copied!' : <Copy size={16} />}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  <div className="text-center">
+                    <div className="bg-white p-4 rounded-lg border border-gray-200 dark:border-gray-700 inline-block">
+                      <img 
+                        src={qrCodeUrl} 
+                        alt="QR Code" 
+                        className="w-32 h-32"
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-500 mt-2">
+                      Scan to leave a review
+                    </p>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={downloadQRCode}
+                      className="mt-2"
+                    >
+                      <Download size={14} className="mr-1" />
+                      Download
+                    </Button>
+                  </div>
+                  
+                  <div className="flex-1">
+                    <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+                      <h4 className="font-medium text-gray-900 dark:text-white mb-2">
+                        How it works:
+                      </h4>
+                      <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
+                        <li>• Customers rate their experience (1-5 stars)</li>
+                        <li>• Positive reviews are directed to Google/Yelp</li>
+                        <li>• Lower ratings provide internal feedback</li>
+                        <li>• Helps maintain higher public ratings</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Settings */}
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Star Threshold for Public Reviews
+                  </label>
+                  <select
+                    value={reviewPageSettings.starThreshold}
+                    onChange={(e) => setReviewPageSettings(prev => ({
+                      ...prev,
+                      starThreshold: Number(e.target.value)
+                    }))}
+                    className="w-full px-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value={2}>2 stars and below → Internal feedback</option>
+                    <option value={3}>3 stars and below → Internal feedback</option>
+                    <option value={4}>4 stars and below → Internal feedback</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Page Background Color
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="color"
+                      value={reviewPageSettings.backgroundColor}
+                      onChange={(e) => setReviewPageSettings(prev => ({
+                        ...prev,
+                        backgroundColor: e.target.value
+                      }))}
+                      className="w-12 h-10 rounded border border-gray-200 dark:border-gray-700"
+                    />
+                    <input
+                      type="text"
+                      value={reviewPageSettings.backgroundColor}
+                      onChange={(e) => setReviewPageSettings(prev => ({
+                        ...prev,
+                        backgroundColor: e.target.value
+                      }))}
+                      className="flex-1 px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Custom Message (Optional)
+                  </label>
+                  <textarea
+                    value={reviewPageSettings.customMessage}
+                    onChange={(e) => setReviewPageSettings(prev => ({
+                      ...prev,
+                      customMessage: e.target.value
+                    }))}
+                    rows={3}
+                    placeholder="Add a personal message for your customers..."
+                    className="w-full px-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <Button variant="primary" className="w-full">
+                  <SettingsIcon size={16} className="mr-2" />
+                  Update Settings
+                </Button>
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Quick Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 lg:gap-6">
@@ -575,4 +781,3 @@ export const Reviews: React.FC = () => {
     </div>
   );
 };
-

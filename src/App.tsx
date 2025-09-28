@@ -13,6 +13,7 @@ import { FixProfile } from './components/pages/FixProfile';
 import { Locations } from './components/pages/Locations';
 import { Login } from './components/pages/Login';
 import { Media } from './components/pages/Media';
+import Onboarding from './components/pages/Onboarding'; // changed to default import!
 import { Posts } from './components/pages/Posts';
 import { PremiumListings } from './components/pages/PremiumListings';
 import { Rankings } from './components/pages/Rankings';
@@ -30,41 +31,30 @@ function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   useEffect(() => {
-    // Check if user is already logged in
     const getSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       setUser(session?.user ?? null);
       setLoading(false);
     };
-
     getSession();
-
-    // Listen for authentication changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
+      (_event, session) => { // renamed to _event since it's not used
         setUser(session?.user ?? null);
         setLoading(false);
       }
     );
-
     return () => subscription.unsubscribe();
   }, []);
 
-  // Handle Google OAuth callback - redirect to locations page
   useEffect(() => {
     const handleGoogleCallback = () => {
       const urlParams = new URLSearchParams(window.location.search);
       const code = urlParams.get('code');
       const error = urlParams.get('error');
-      
       if (code || error) {
-        // If we have OAuth parameters, switch to locations section
         setActiveSection('locations');
-        // Clean up URL without refreshing page
-       // window.history.replaceState({}, document.title, window.location.pathname);
       }
     };
-
     handleGoogleCallback();
   }, []);
 
@@ -76,7 +66,7 @@ function App() {
     try {
       await supabase.auth.signOut();
       setUser(null);
-      setActiveSection('dashboard'); // Reset to dashboard on logout
+      setActiveSection('dashboard');
     } catch (error) {
       console.error('Error signing out:', error);
     }
@@ -124,12 +114,13 @@ function App() {
         return <DatabaseCheck />;
       case 'fix-profile':
         return <FixProfile />;
+      case 'onboarding':
+        return <Onboarding />;
       default:
         return <Dashboard />;
     }
   };
 
-  // Show loading spinner while checking authentication
   if (loading) {
     return (
       <ThemeProvider>
