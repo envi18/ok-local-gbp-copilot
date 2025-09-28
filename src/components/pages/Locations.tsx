@@ -1,13 +1,19 @@
+// src/components/pages/Locations.tsx
+// STEP 3: Complete replacement for your Locations component with Google Business Profile integration
+
 import {
   AlertCircle,
   Building,
   CheckCircle,
   Clock,
   ExternalLink,
+  Eye,
   Globe,
   Info,
   MapPin,
   MessageSquare,
+  MousePointer,
+  Navigation,
   Phone,
   Plus,
   RefreshCw,
@@ -16,8 +22,10 @@ import {
   Users
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
+import { useGoogleBusinessProfile } from '../../hooks/useGoogleBusinessProfile';
 import { dataService, type Location } from '../../lib/dataService';
 import { googleAuthService, useGoogleConnection } from '../../lib/googleAuth';
+import { googleBusinessProfileService, type BusinessLocation } from '../../lib/googleBusinessProfileService';
 import { supabase } from '../../lib/supabase';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
@@ -48,16 +56,6 @@ const mockBusinessProfile: BusinessProfileData = {
   category: "Professional Services"
 };
 
-interface GoogleBusinessData {
-  name?: string;
-  address?: string;
-  phone?: string;
-  website?: string;
-  rating?: number;
-  review_count?: number;
-  category?: string;
-}
-
 interface DataDiscrepancy {
   field: string;
   originalValue: string;
@@ -72,18 +70,41 @@ export const Locations: React.FC = () => {
   
   // Business profile states
   const [businessProfile] = useState<BusinessProfileData>(mockBusinessProfile);
-  const [googleBusinessData, setGoogleBusinessData] = useState<GoogleBusinessData | null>(null);
   const [dataDiscrepancies, setDataDiscrepancies] = useState<DataDiscrepancy[]>([]);
 
-  // Use the new Google connection hook
+  // Use the Google connection hook
   const {
     connected: isGoogleConnected,
     loading: googleLoading,
     error: googleError,
     tokenData,
     refresh: refreshGoogleConnection,
-    disconnect: disconnectGoogle
+    disconnect: disconnectGoogle,
+    clearAndReconnect
   } = useGoogleConnection(user?.id || null);
+
+  // Use the Google Business Profile hook
+  const {
+    accounts,
+    locations: googleLocations,
+    reviews,
+    insights,
+    loading: gbpLoading,
+    errors: gbpErrors,
+    selectedAccount,
+    selectedLocation,
+    setSelectedAccount,
+    setSelectedLocation,
+    refreshAccounts,
+    refreshLocations,
+    refreshReviews,
+    replyToReview,
+    hasData,
+    hasLocations,
+    hasReviews,
+    averageRating,
+    totalReviews
+  } = useGoogleBusinessProfile(user?.id || null, isGoogleConnected);
 
   useEffect(() => {
     initializeComponent();
@@ -94,15 +115,15 @@ export const Locations: React.FC = () => {
     checkForOAuthCallback();
   }, [user]);
 
-  // Fetch Google business data when connection status changes
+  // Sync Google location data with local business profile
   useEffect(() => {
-    if (isGoogleConnected) {
-      fetchGoogleBusinessData();
-    } else {
-      setGoogleBusinessData(null);
-      setDataDiscrepancies([]);
+    if (googleLocations.length > 0 && selectedLocation) {
+      const currentLocation = googleLocations.find(loc => loc.name === selectedLocation);
+      if (currentLocation) {
+        syncGoogleLocationData(currentLocation);
+      }
     }
-  }, [isGoogleConnected]);
+  }, [googleLocations, selectedLocation]);
 
   const initializeComponent = async () => {
     try {
@@ -144,7 +165,6 @@ export const Locations: React.FC = () => {
 
     if (error) {
       console.error('OAuth error:', error);
-      // Clean up URL
       window.history.replaceState({}, document.title, window.location.pathname);
       return;
     }
@@ -155,10 +175,7 @@ export const Locations: React.FC = () => {
         await googleAuthService.exchangeCodeForTokens(code, user.id);
         console.log('OAuth flow completed successfully!');
         
-        // Clean up URL
         window.history.replaceState({}, document.title, window.location.pathname);
-        
-        // Refresh connection status
         refreshGoogleConnection();
       } catch (error) {
         console.error('OAuth callback error:', error);
@@ -166,49 +183,46 @@ export const Locations: React.FC = () => {
     }
   };
 
-  const fetchGoogleBusinessData = async () => {
-    // TODO: Implement Google Business Profile API calls
-    // This is where you'll fetch actual business data from Google
-    
-    // Mock Google Business Profile data for demonstration
-    const mockGoogleData: GoogleBusinessData = {
-      name: "Sample Business Name (Google)",
-      address: "456 Different St", // Different from signup data
-      phone: "(555) 987-6543", // Different from signup data
-      website: "https://samplebusiness.com",
-      rating: 4.5,
-      review_count: 127,
-      category: "Professional Services"
-    };
-
-    // Compare with existing business profile and identify discrepancies
+  const syncGoogleLocationData = (googleLocation: BusinessLocation) => {
     const discrepancies: DataDiscrepancy[] = [];
     
-    if (mockGoogleData.name && mockGoogleData.name !== businessProfile.name) {
+    // Compare business name
+    if (googleLocation.locationName && googleLocation.locationName !== businessProfile.name) {
       discrepancies.push({
         field: 'Business Name',
         originalValue: businessProfile.name,
-        googleValue: mockGoogleData.name
+        googleValue: googleLocation.locationName
       });
     }
     
-    if (mockGoogleData.address && mockGoogleData.address !== businessProfile.address) {
+    // Compare address
+    const googleAddress = googleBusinessProfileService.formatAddress(googleLocation);
+    if (googleAddress && googleAddress !== businessProfile.address) {
       discrepancies.push({
         field: 'Address',
         originalValue: businessProfile.address,
-        googleValue: mockGoogleData.address
+        googleValue: googleAddress
       });
     }
     
-    if (mockGoogleData.phone && mockGoogleData.phone !== businessProfile.phone) {
+    // Compare phone
+    if (googleLocation.primaryPhone && googleLocation.primaryPhone !== businessProfile.phone) {
       discrepancies.push({
         field: 'Phone Number',
         originalValue: businessProfile.phone,
-        googleValue: mockGoogleData.phone
+        googleValue: googleLocation.primaryPhone
       });
     }
 
-    setGoogleBusinessData(mockGoogleData);
+    // Compare website
+    if (googleLocation.websiteUri && googleLocation.websiteUri !== businessProfile.website) {
+      discrepancies.push({
+        field: 'Website',
+        originalValue: businessProfile.website,
+        googleValue: googleLocation.websiteUri
+      });
+    }
+
     setDataDiscrepancies(discrepancies);
   };
 
@@ -273,12 +287,22 @@ export const Locations: React.FC = () => {
               <div className="flex-1">
                 <h3 className="text-sm font-medium text-red-800 dark:text-red-200">Google Connection Error</h3>
                 <p className="text-sm text-red-700 dark:text-red-300 mt-1">{googleError}</p>
-                <button
-                  onClick={refreshGoogleConnection}
-                  className="mt-2 text-sm text-red-600 hover:text-red-500 underline"
-                >
-                  Try again
-                </button>
+                <div className="flex space-x-3 mt-3">
+                  <button
+                    onClick={refreshGoogleConnection}
+                    className="text-sm text-red-600 hover:text-red-500 underline"
+                  >
+                    Try again
+                  </button>
+                  {googleError.includes('expired') && (
+                    <button
+                      onClick={clearAndReconnect}
+                      className="text-sm text-blue-600 hover:text-blue-500 underline"
+                    >
+                      Reconnect to Google
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -301,7 +325,7 @@ export const Locations: React.FC = () => {
                     Connected as {tokenData.google_email}
                   </p>
                   <p className="text-xs text-green-600 dark:text-green-400">
-                    Connected on {new Date(tokenData.created_at).toLocaleDateString()}
+                    {hasData ? `${accounts.length} business account(s), ${googleLocations.length} location(s)` : 'Loading business data...'}
                   </p>
                 </div>
               </div>
@@ -359,107 +383,548 @@ export const Locations: React.FC = () => {
     );
   };
 
-  // Business Profile Card Component
-  const BusinessProfileCard: React.FC = () => {
-    const displayData = isGoogleConnected && googleBusinessData ? {
-      name: googleBusinessData.name || businessProfile.name,
-      address: googleBusinessData.address || businessProfile.address,
-      phone: googleBusinessData.phone || businessProfile.phone,
-      website: googleBusinessData.website || businessProfile.website,
-      rating: googleBusinessData.rating,
-      review_count: googleBusinessData.review_count,
-      category: googleBusinessData.category
-    } : businessProfile;
+  // Google Business Profile Data Display
+  const GoogleBusinessData: React.FC = () => {
+    if (!isGoogleConnected || !hasData) return null;
+
+    if (gbpLoading.accounts || gbpLoading.locations) {
+      return (
+        <Card className="mb-6">
+          <div className="p-6">
+            <div className="flex items-center space-x-3">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+              <span className="text-gray-600 dark:text-gray-400">Loading Google Business Profile data...</span>
+            </div>
+          </div>
+        </Card>
+      );
+    }
+
+    if (gbpErrors.accounts || gbpErrors.locations) {
+      return (
+        <Card className="mb-6 border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/20">
+          <div className="p-4">
+            <div className="flex items-start space-x-3">
+              <AlertCircle className="text-yellow-600 dark:text-yellow-400 mt-0.5" size={20} />
+              <div className="flex-1">
+                <h3 className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
+                  Unable to load Google Business Profile data
+                </h3>
+                <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
+                  {gbpErrors.accounts || gbpErrors.locations}
+                </p>
+                <button
+                  onClick={refreshAccounts}
+                  className="mt-2 text-sm text-yellow-600 hover:text-yellow-500 underline"
+                >
+                  Try again
+                </button>
+              </div>
+            </div>
+          </div>
+        </Card>
+      );
+    }
 
     return (
-      <Card className="mb-8">
-        <div className="p-6">
-          <div className="flex items-start justify-between mb-6">
+      <div className="space-y-6 mb-8">
+        {/* Account Selection */}
+        {accounts.length > 1 && (
+          <Card>
+            <div className="p-4">
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-3">
+                Select Business Account
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {accounts.map((account) => (
+                  <button
+                    key={account.name}
+                    onClick={() => setSelectedAccount(account.name)}
+                    className={`p-3 rounded-lg border-2 text-left transition-colors ${
+                      selectedAccount === account.name
+                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                        : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="font-medium text-gray-900 dark:text-white">
+                      {account.accountName}
+                    </div>
+                    <div className="text-sm text-gray-600 dark:text-gray-400">
+                      {account.type} • {account.role}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {/* Google Locations Grid */}
+        {hasLocations && (
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white">
+                Google Business Locations
+              </h3>
+              <Button
+                onClick={refreshLocations}
+                variant="secondary"
+                size="sm"
+                disabled={gbpLoading.locations}
+              >
+                <RefreshCw size={14} className={`mr-1 ${gbpLoading.locations ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+              {googleLocations.map((location) => (
+                <GoogleLocationCard key={location.name} location={location} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Reviews Section */}
+        {hasReviews && selectedLocation && (
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white">
+                Recent Reviews ({totalReviews})
+              </h3>
+              <Button
+                onClick={refreshReviews}
+                variant="secondary"
+                size="sm"
+                disabled={gbpLoading.reviews}
+              >
+                <RefreshCw size={14} className={`mr-1 ${gbpLoading.reviews ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+            </div>
+
+            <div className="space-y-4">
+              {reviews.slice(0, 3).map((review) => (
+                <GoogleReviewCard key={review.name} review={review} onReply={replyToReview} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Insights Section */}
+        {insights && selectedLocation && (
+          <GoogleInsightsDisplay insights={insights} loading={gbpLoading.insights} />
+        )}
+      </div>
+    );
+  };
+
+  // Google Location Card Component
+  const GoogleLocationCard: React.FC<{ location: BusinessLocation }> = ({ location }) => {
+    const isSelected = selectedLocation === location.name;
+    
+    return (
+      <div 
+        className={`cursor-pointer transition-colors ${
+          isSelected ? 'ring-2 ring-blue-500 border-blue-200' : ''
+        }`}
+        onClick={() => setSelectedLocation(location.name)}
+      >
+        <Card hover>
+          <div className="flex items-start justify-between mb-4">
             <div className="flex-1">
-              <div className="flex items-center gap-3 mb-2">
-                <Building size={24} className="text-[#f45a4e]" />
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {displayData.name}
-                </h2>
-                {isGoogleConnected && (
-                  <Badge variant="success" size="sm">
+              <div className="flex items-center gap-2 mb-2">
+                <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  {location.locationName}
+                </h4>
+                {isSelected && (
+                  <Badge variant="info" size="sm">
                     <CheckCircle size={12} className="mr-1" />
-                    Google Connected
+                    Selected
                   </Badge>
                 )}
               </div>
               
-              {displayData.category && (
-                <p className="text-gray-600 dark:text-gray-400 mb-4">{displayData.category}</p>
-              )}
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-sm">
-                    <MapPin size={16} className="text-gray-500" />
-                    <span className="text-gray-700 dark:text-gray-300">
-                      {displayData.address}
-                      {businessProfile.city && `, ${businessProfile.city}`}
-                      {businessProfile.state && `, ${businessProfile.state}`}
-                      {businessProfile.postal_code && ` ${businessProfile.postal_code}`}
-                    </span>
+              <div className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+                {location.address && (
+                  <div className="flex items-center gap-2">
+                    <MapPin size={14} />
+                    <span>{googleBusinessProfileService.formatAddress(location)}</span>
                   </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <Phone size={16} className="text-gray-500" />
-                    <span className="text-gray-700 dark:text-gray-300">{displayData.phone}</span>
+                )}
+                {location.primaryPhone && (
+                  <div className="flex items-center gap-2">
+                    <Phone size={14} />
+                    <span>{location.primaryPhone}</span>
                   </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <Globe size={16} className="text-gray-500" />
+                )}
+                {location.websiteUri && (
+                  <div className="flex items-center gap-2">
+                    <Globe size={14} />
                     <a 
-                      href={displayData.website} 
+                      href={location.websiteUri} 
                       target="_blank" 
                       rel="noopener noreferrer"
                       className="text-[#f45a4e] hover:underline"
+                      onClick={(e) => e.stopPropagation()}
                     >
-                      {displayData.website?.replace(/^https?:\/\//, '')}
+                      {location.websiteUri.replace(/^https?:\/\//, '')}
                     </a>
                   </div>
-                </div>
-
-                {isGoogleConnected && googleBusinessData && (
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2 text-sm">
-                      <Star size={16} className="text-yellow-500 fill-current" />
-                      <span className="text-gray-700 dark:text-gray-300">
-                        {googleBusinessData.rating?.toFixed(1)} rating
-                      </span>
+                )}
+                {location.primaryCategory && (
+                  <div className="flex items-center gap-2">
+                    <div className="w-3.5 h-3.5 bg-gray-400 rounded-sm flex items-center justify-center">
+                      <div className="w-1.5 h-1.5 bg-white rounded-full"></div>
                     </div>
-                    <div className="flex items-center gap-2 text-sm">
-                      <MessageSquare size={16} className="text-blue-500" />
-                      <span className="text-gray-700 dark:text-gray-300">
-                        {googleBusinessData.review_count} reviews
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm">
-                      <Users size={16} className="text-green-500" />
-                      <span className="text-gray-700 dark:text-gray-300">
-                        {businessProfile.services.length} services
-                      </span>
-                    </div>
+                    <span>{googleBusinessProfileService.getPrimaryCategory(location)}</span>
                   </div>
                 )}
               </div>
+            </div>
+          </div>
 
-              {/* Services */}
-              {businessProfile.services.length > 0 && (
-                <div className="mb-6">
-                  <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-2">Services</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {businessProfile.services.map((service, index) => (
-                      <Badge key={index} variant="info" size="sm">
-                        {service}
-                      </Badge>
+          {isSelected && hasReviews && (
+            <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+              <div className="text-center">
+                <div className="flex items-center justify-center gap-1 mb-1">
+                  <Star size={14} className="text-yellow-500 fill-current" />
+                  <span className="font-semibold text-gray-900 dark:text-white">
+                    {averageRating.toFixed(1)}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-600 dark:text-gray-400">Average Rating</p>
+              </div>
+              <div className="text-center">
+                <div className="flex items-center justify-center gap-1 mb-1">
+                  <MessageSquare size={14} className="text-blue-500" />
+                  <span className="font-semibold text-gray-900 dark:text-white">{totalReviews}</span>
+                </div>
+                <p className="text-xs text-gray-600 dark:text-gray-400">Total Reviews</p>
+              </div>
+            </div>
+          )}
+        </Card>
+      </div>
+    );
+  };
+
+  // Google Review Card Component
+  const GoogleReviewCard: React.FC<{ review: any; onReply: (reviewName: string, reply: string) => Promise<boolean> }> = ({ review, onReply }) => {
+    const [showReplyForm, setShowReplyForm] = useState(false);
+    const [replyText, setReplyText] = useState('');
+    const [isReplying, setIsReplying] = useState(false);
+
+    const handleReply = async () => {
+      if (!replyText.trim()) return;
+      
+      setIsReplying(true);
+      try {
+        const success = await onReply(review.name, replyText);
+        if (success) {
+          setShowReplyForm(false);
+          setReplyText('');
+        }
+      } finally {
+        setIsReplying(false);
+      }
+    };
+
+    const starRating = review.starRating || 0;
+
+    return (
+      <Card>
+        <div className="p-4">
+          <div className="flex items-start space-x-3">
+            <div className="flex-shrink-0">
+              {review.reviewer.profilePhotoUrl ? (
+                <img
+                  src={review.reviewer.profilePhotoUrl}
+                  alt={review.reviewer.displayName}
+                  className="w-10 h-10 rounded-full"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center">
+                  <Users size={16} className="text-gray-600 dark:text-gray-300" />
+                </div>
+              )}
+            </div>
+            
+            <div className="flex-1">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <h4 className="font-medium text-gray-900 dark:text-white">
+                    {review.reviewer.displayName}
+                  </h4>
+                  <div className="flex items-center gap-1">
+                    {[...Array(5)].map((_, i) => (
+                      <Star
+                        key={i}
+                        size={14}
+                        className={`${
+                          i < starRating 
+                            ? 'text-yellow-500 fill-current' 
+                            : 'text-gray-300'
+                        }`}
+                      />
                     ))}
+                  </div>
+                </div>
+                <span className="text-sm text-gray-500">
+                  {new Date(review.createTime).toLocaleDateString()}
+                </span>
+              </div>
+              
+              {review.comment && (
+                <p className="text-gray-700 dark:text-gray-300 mb-3">
+                  {review.comment}
+                </p>
+              )}
+
+              {review.reviewReply ? (
+                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Building size={14} className="text-gray-600" />
+                    <span className="text-sm font-medium text-gray-900 dark:text-white">
+                      Business Reply
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-700 dark:text-gray-300">
+                    {review.reviewReply.comment}
+                  </p>
+                </div>
+              ) : (
+                <div className="flex space-x-2">
+                  <Button
+                    onClick={() => setShowReplyForm(!showReplyForm)}
+                    variant="secondary"
+                    size="sm"
+                  >
+                    Reply
+                  </Button>
+                </div>
+              )}
+
+              {showReplyForm && (
+                <div className="mt-3 space-y-3">
+                  <textarea
+                    value={replyText}
+                    onChange={(e) => setReplyText(e.target.value)}
+                    placeholder="Write your reply..."
+                    className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-800 dark:text-white"
+                    rows={3}
+                  />
+                  <div className="flex space-x-2">
+                    <Button
+                      onClick={handleReply}
+                      disabled={!replyText.trim() || isReplying}
+                      variant="primary"
+                      size="sm"
+                    >
+                      {isReplying ? 'Sending...' : 'Send Reply'}
+                    </Button>
+                    <Button
+                      onClick={() => setShowReplyForm(false)}
+                      variant="secondary"
+                      size="sm"
+                    >
+                      Cancel
+                    </Button>
                   </div>
                 </div>
               )}
             </div>
           </div>
+        </div>
+      </Card>
+    );
+  };
+
+  // Google Insights Display Component
+  const GoogleInsightsDisplay: React.FC<{ insights: any; loading: boolean }> = ({ insights, loading }) => {
+    if (loading) {
+      return (
+        <Card>
+          <div className="p-4">
+            <div className="flex items-center space-x-3">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+              <span className="text-gray-600 dark:text-gray-400">Loading insights...</span>
+            </div>
+          </div>
+        </Card>
+      );
+    }
+
+    if (!insights?.locationMetrics?.length) return null;
+
+    const metrics = insights.locationMetrics[0]?.metricValues || [];
+
+    return (
+      <div>
+        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+          Performance Insights (Last 30 Days)
+        </h3>
+        
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {metrics.map((metric: any, index: number) => {
+            const value = parseInt(metric.totalValue?.value || '0');
+            let icon, label, gradient;
+
+            switch (metric.metric) {
+              case 'VIEWS_MAPS':
+                icon = Eye;
+                label = 'Maps Views';
+                gradient = 'bg-gradient-to-r from-blue-500 to-blue-600';
+                break;
+              case 'VIEWS_SEARCH':
+                icon = Eye;
+                label = 'Search Views';
+                gradient = 'bg-gradient-to-r from-green-500 to-green-600';
+                break;
+              case 'ACTIONS_WEBSITE':
+                icon = MousePointer;
+                label = 'Website Clicks';
+                gradient = 'bg-gradient-to-r from-purple-500 to-purple-600';
+                break;
+              case 'ACTIONS_PHONE':
+                icon = Phone;
+                label = 'Phone Calls';
+                gradient = 'bg-gradient-to-r from-orange-500 to-orange-600';
+                break;
+              case 'ACTIONS_DRIVING_DIRECTIONS':
+                icon = Navigation;
+                label = 'Directions';
+                gradient = 'bg-gradient-to-r from-red-500 to-red-600';
+                break;
+              default:
+                icon = TrendingUp;
+                label = metric.metric.replace('_', ' ');
+                gradient = 'bg-gradient-to-r from-gray-500 to-gray-600';
+            }
+
+            return (
+              <Card key={index} hover>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
+                      {label}
+                    </p>
+                    <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                      {value.toLocaleString()}
+                    </p>
+                  </div>
+                  <div className={`p-3 rounded-full ${gradient}`}>
+                    {React.createElement(icon, { size: 20, className: "text-white" })}
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  // Business Profile Card Component (updated to use Google data when available)
+  const BusinessProfileCard: React.FC = () => {
+    const currentLocation = selectedLocation 
+      ? googleLocations.find(loc => loc.name === selectedLocation)
+      : null;
+
+    const displayData = currentLocation ? {
+      name: currentLocation.locationName || businessProfile.name,
+      address: googleBusinessProfileService.formatAddress(currentLocation) || businessProfile.address,
+      phone: currentLocation.primaryPhone || businessProfile.phone,
+      website: currentLocation.websiteUri || businessProfile.website,
+      category: googleBusinessProfileService.getPrimaryCategory(currentLocation) || businessProfile.category
+    } : businessProfile;
+
+    return (
+      <Card className="mb-8">
+        <div className="p-6">
+          <div className="flex items-center gap-3 mb-6">
+            <Building size={24} className="text-[#f45a4e]" />
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+              {displayData.name}
+            </h2>
+            {isGoogleConnected && (
+              <Badge variant="success" size="sm">
+                <CheckCircle size={12} className="mr-1" />
+                Google Connected
+              </Badge>
+            )}
+            {currentLocation && (
+              <Badge variant="info" size="sm">
+                Live Data
+              </Badge>
+            )}
+          </div>
+          
+          {displayData.category && (
+            <p className="text-gray-600 dark:text-gray-400 mb-4">{displayData.category}</p>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-sm">
+                <MapPin size={16} className="text-gray-500" />
+                <span className="text-gray-700 dark:text-gray-300">
+                  {displayData.address}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <Phone size={16} className="text-gray-500" />
+                <span className="text-gray-700 dark:text-gray-300">{displayData.phone}</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <Globe size={16} className="text-gray-500" />
+                <a 
+                  href={displayData.website} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-[#f45a4e] hover:underline"
+                >
+                  {displayData.website?.replace(/^https?:\/\//, '')}
+                </a>
+              </div>
+            </div>
+
+            {isGoogleConnected && hasReviews && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sm">
+                  <Star size={16} className="text-yellow-500 fill-current" />
+                  <span className="text-gray-700 dark:text-gray-300">
+                    {averageRating.toFixed(1)} average rating
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <MessageSquare size={16} className="text-blue-500" />
+                  <span className="text-gray-700 dark:text-gray-300">
+                    {totalReviews} reviews
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <Users size={16} className="text-green-500" />
+                  <span className="text-gray-700 dark:text-gray-300">
+                    {businessProfile.services.length} services
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {businessProfile.services.length > 0 && (
+            <div className="mb-6">
+              <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-2">Services</h4>
+              <div className="flex flex-wrap gap-2">
+                {businessProfile.services.map((service, index) => (
+                  <Badge key={index} variant="info" size="sm">
+                    {service}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </Card>
     );
@@ -680,12 +1145,17 @@ export const Locations: React.FC = () => {
     );
   }
 
-  // Calculate summary statistics
-  const totalReviews = locations.reduce((sum, loc) => sum + loc.review_count, 0);
-  const averageRating = locations.length > 0 
+  // Calculate summary statistics - use Google data if available, fallback to local data
+  const totalReviewsFromLocal = locations.reduce((sum, loc) => sum + loc.review_count, 0);
+  const averageRatingFromLocal = locations.length > 0 
     ? locations.reduce((sum, loc) => sum + (loc.rating || 0), 0) / locations.length
     : 0;
   const syncedLocations = locations.filter(loc => loc.gbp_sync_status === 'synced').length;
+
+  // Use Google data if available, otherwise use local data
+  const displayTotalReviews = hasReviews ? totalReviews : totalReviewsFromLocal;
+  const displayAverageRating = hasReviews ? averageRating : averageRatingFromLocal;
+  const displayTotalLocations = hasLocations ? googleLocations.length : locations.length;
 
   return (
     <div className="space-y-8">
@@ -713,42 +1183,49 @@ export const Locations: React.FC = () => {
       {/* Business Profile Card */}
       <BusinessProfileCard />
 
-      {/* Summary Cards - only show if locations exist */}
-      {locations.length > 0 && (
+      {/* Google Business Profile Data */}
+      <GoogleBusinessData />
+
+      {/* Summary Cards - show Google data if available, otherwise local data */}
+      {(displayTotalLocations > 0 || isGoogleConnected) && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
           <SummaryCard
             title="Total Locations"
-            value={locations.length}
+            value={displayTotalLocations}
             icon={MapPin}
             gradient="bg-gradient-to-r from-[#667eea] to-[#764ba2]"
+            loading={isGoogleConnected && gbpLoading.locations}
           />
           <SummaryCard
             title="Average Rating"
-            value={averageRating.toFixed(1)}
+            value={displayAverageRating.toFixed(1)}
             icon={Star}
             gradient="bg-gradient-to-r from-[#f093fb] to-[#f5576c]"
+            loading={isGoogleConnected && gbpLoading.reviews}
           />
           <SummaryCard
             title="Total Reviews"
-            value={totalReviews.toLocaleString()}
+            value={displayTotalReviews.toLocaleString()}
             icon={MessageSquare}
             gradient="bg-gradient-to-r from-[#11998e] to-[#38ef7d]"
+            loading={isGoogleConnected && gbpLoading.reviews}
           />
           <SummaryCard
             title="Synced Locations"
-            value={syncedLocations}
+            value={isGoogleConnected ? (hasLocations ? googleLocations.length : 0) : syncedLocations}
             icon={CheckCircle}
             gradient="bg-gradient-to-r from-[#f45a4e] to-[#e53e3e]"
+            loading={isGoogleConnected && gbpLoading.locations}
           />
         </div>
       )}
 
-      {/* Additional Locations Grid - only show if there are multiple locations */}
-      {locations.length > 0 && (
+      {/* Local Locations Grid - only show if there are local locations and no Google locations */}
+      {locations.length > 0 && !hasLocations && (
         <>
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-              Additional Locations
+              Local Locations
             </h2>
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 lg:gap-6">
@@ -759,20 +1236,34 @@ export const Locations: React.FC = () => {
         </>
       )}
 
-      {/* Empty state for additional locations */}
-      {locations.length === 0 && isGoogleConnected && (
+      {/* Empty state */}
+      {!hasLocations && locations.length === 0 && isGoogleConnected && (
         <Card>
           <div className="text-center py-12">
             <MapPin size={48} className="mx-auto text-gray-400 mb-4" />
             <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-              Ready to add more locations?
+              No business locations found
             </h3>
             <p className="text-gray-600 dark:text-gray-400 mb-6">
-              Your Google Business Profile is connected. Add additional business locations to manage them all in one place.
+              Your Google Business Profile is connected, but no locations were found. You may need to set up your business profile on Google first.
             </p>
-            <Button icon={Plus} variant="primary">
-              Add Additional Location
-            </Button>
+            <div className="flex justify-center space-x-4">
+              <Button 
+                onClick={() => window.open('https://business.google.com', '_blank')}
+                variant="secondary"
+              >
+                <ExternalLink size={16} className="mr-2" />
+                Open Google Business
+              </Button>
+              <Button 
+                onClick={refreshLocations}
+                variant="primary"
+                disabled={gbpLoading.locations}
+              >
+                <RefreshCw size={16} className={`mr-2 ${gbpLoading.locations ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+            </div>
           </div>
         </Card>
       )}
