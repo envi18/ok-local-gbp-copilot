@@ -16,8 +16,8 @@ import {
   Users
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
-import { dataService, type Location, type Profile } from '../../lib/dataService';
-import { googleAuthService } from '../../lib/googleAuth';
+import { dataService, type Location } from '../../lib/dataService';
+import { googleAuthService, useGoogleConnection } from '../../lib/googleAuth';
 import { supabase } from '../../lib/supabase';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
@@ -66,51 +66,61 @@ interface DataDiscrepancy {
 
 export const Locations: React.FC = () => {
   const [locations, setLocations] = useState<Location[]>([]);
-  const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
-  // Google OAuth states
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [oauthError, setOauthError] = useState<string | null>(null);
-  const [oauthSuccess, setOauthSuccess] = useState<string | null>(null);
-  const [isGoogleConnected, setIsGoogleConnected] = useState(false);
+  const [user, setUser] = useState<any>(null);
   
   // Business profile states
   const [businessProfile] = useState<BusinessProfileData>(mockBusinessProfile);
   const [googleBusinessData, setGoogleBusinessData] = useState<GoogleBusinessData | null>(null);
   const [dataDiscrepancies, setDataDiscrepancies] = useState<DataDiscrepancy[]>([]);
 
+  // Use the new Google connection hook
+  const {
+    connected: isGoogleConnected,
+    loading: googleLoading,
+    error: googleError,
+    tokenData,
+    refresh: refreshGoogleConnection,
+    disconnect: disconnectGoogle
+  } = useGoogleConnection(user?.id || null);
+
   useEffect(() => {
-    initializeLocations();
-    checkExistingGoogleConnection();
-    checkForOAuthCallback();
+    initializeComponent();
   }, []);
 
-  // Re-check connection status when isGoogleConnected changes
+  // Handle OAuth callback on component mount
+  useEffect(() => {
+    checkForOAuthCallback();
+  }, [user]);
+
+  // Fetch Google business data when connection status changes
   useEffect(() => {
     if (isGoogleConnected) {
       fetchGoogleBusinessData();
+    } else {
+      setGoogleBusinessData(null);
+      setDataDiscrepancies([]);
     }
   }, [isGoogleConnected]);
 
-  const initializeLocations = async () => {
+  const initializeComponent = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (!currentUser) {
         setError('User not authenticated');
         return;
       }
+      setUser(currentUser);
 
-      const userProfile = await dataService.initializeUserData(user);
+      const userProfile = await dataService.initializeUserData(currentUser);
       if (!userProfile) {
         setError('Failed to initialize user profile');
         return;
       }
-      setProfile(userProfile);
 
       const locationsData = await dataService.getLocations(userProfile.organization_id);
       setLocations(locationsData);
@@ -123,89 +133,36 @@ export const Locations: React.FC = () => {
     }
   };
 
-  const checkExistingGoogleConnection = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        console.log('No user found for Google connection check');
-        return;
-      }
-
-      console.log('Checking existing Google connection for user:', user.id);
-
-      const { data: tokens, error } = await supabase
-        .from('google_oauth_tokens')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('is_active', true)
-        .single();
-
-      if (error) {
-        console.log('No existing Google connection found:', error.message);
-        console.log('Google tokens found:', false);
-        return;
-      }
-
-      console.log('Google tokens found:', !!tokens);
-
-      if (tokens) {
-        setIsGoogleConnected(true);
-        await fetchGoogleBusinessData();
-      }
-    } catch (error) {
-      console.error('Error checking existing connection:', error);
-    }
-  };
-
   const checkForOAuthCallback = async () => {
+    if (!user) return;
+
     const urlParams = new URLSearchParams(window.location.search);
     const code = urlParams.get('code');
     const error = urlParams.get('error');
 
-    console.log('Current URL:', window.location.href);
-    console.log('URL search params:', window.location.search);
     console.log('Checking OAuth callback - code:', !!code, 'error:', error);
-    console.log('Raw code value:', code);
 
     if (error) {
-      setOauthError('Google authentication was cancelled or failed.');
+      console.error('OAuth error:', error);
+      // Clean up URL
       window.history.replaceState({}, document.title, window.location.pathname);
       return;
     }
 
     if (code) {
-      console.log('Processing OAuth code...');
-      await handleOAuthCallback(code);
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
-  };
-
-  const handleOAuthCallback = async (code: string) => {
-    setIsConnecting(true);
-    setOauthError(null);
-
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('No authenticated user');
-
-      console.log('Exchanging OAuth code for tokens...');
-      const result = await googleAuthService.exchangeCodeForTokens(code, user.id);
-      console.log('Token exchange result:', result);
-      
-      if (result.success) {
-        setIsGoogleConnected(true);
-        setOauthSuccess('Successfully connected Google account!');
-        console.log('Setting connected state to true, fetching business data...');
-        await fetchGoogleBusinessData();
-      } else {
-        throw new Error('Token exchange failed');
+      console.log('Processing OAuth callback...');
+      try {
+        await googleAuthService.exchangeCodeForTokens(code, user.id);
+        console.log('OAuth flow completed successfully!');
+        
+        // Clean up URL
+        window.history.replaceState({}, document.title, window.location.pathname);
+        
+        // Refresh connection status
+        refreshGoogleConnection();
+      } catch (error) {
+        console.error('OAuth callback error:', error);
       }
-
-    } catch (error) {
-      console.error('OAuth callback error:', error);
-      setOauthError(error instanceof Error ? error.message : 'Failed to connect to Google');
-    } finally {
-      setIsConnecting(false);
     }
   };
 
@@ -259,32 +216,18 @@ export const Locations: React.FC = () => {
     try {
       const authUrl = googleAuthService.getAuthUrl();
       console.log('Generated OAuth URL:', authUrl);
-      setIsConnecting(true);
       window.location.href = authUrl;
     } catch (error) {
       console.error('Error generating auth URL:', error);
-      setOauthError('Failed to generate Google authentication URL');
-      setIsConnecting(false);
     }
   };
 
   const handleDisconnectGoogle = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      await supabase
-        .from('google_oauth_tokens')
-        .update({ is_active: false })
-        .eq('user_id', user.id);
-
-      setIsGoogleConnected(false);
-      setGoogleBusinessData(null);
-      setDataDiscrepancies([]);
-      setOauthSuccess('Disconnected from Google Business Profile');
-    } catch (error) {
-      console.error('Error disconnecting:', error);
-      setOauthError('Failed to disconnect from Google');
+    const success = await disconnectGoogle();
+    if (success) {
+      console.log('Successfully disconnected from Google');
+    } else {
+      console.error('Failed to disconnect from Google');
     }
   };
 
@@ -304,6 +247,116 @@ export const Locations: React.FC = () => {
       case 'error': return 'error';
       default: return 'warning';
     }
+  };
+
+  // Google Connection Status Component
+  const GoogleConnectionStatus: React.FC = () => {
+    if (googleLoading) {
+      return (
+        <Card className="mb-6">
+          <div className="p-4">
+            <div className="flex items-center space-x-3">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+              <span className="text-gray-600 dark:text-gray-400">Checking Google connection...</span>
+            </div>
+          </div>
+        </Card>
+      );
+    }
+
+    if (googleError) {
+      return (
+        <Card className="mb-6 border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20">
+          <div className="p-4">
+            <div className="flex items-start space-x-3">
+              <AlertCircle className="text-red-500 mt-0.5" size={20} />
+              <div className="flex-1">
+                <h3 className="text-sm font-medium text-red-800 dark:text-red-200">Google Connection Error</h3>
+                <p className="text-sm text-red-700 dark:text-red-300 mt-1">{googleError}</p>
+                <button
+                  onClick={refreshGoogleConnection}
+                  className="mt-2 text-sm text-red-600 hover:text-red-500 underline"
+                >
+                  Try again
+                </button>
+              </div>
+            </div>
+          </div>
+        </Card>
+      );
+    }
+
+    if (isGoogleConnected && tokenData) {
+      return (
+        <Card className="mb-6 border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20">
+          <div className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <CheckCircle className="text-green-500" size={20} />
+                <div>
+                  <h3 className="text-sm font-medium text-green-800 dark:text-green-200">
+                    Connected to Google Business Profile
+                  </h3>
+                  <p className="text-sm text-green-700 dark:text-green-300">
+                    Connected as {tokenData.google_email}
+                  </p>
+                  <p className="text-xs text-green-600 dark:text-green-400">
+                    Connected on {new Date(tokenData.created_at).toLocaleDateString()}
+                  </p>
+                </div>
+              </div>
+              <div className="flex space-x-2">
+                <Button
+                  onClick={refreshGoogleConnection}
+                  variant="secondary"
+                  size="sm"
+                >
+                  <RefreshCw size={14} className="mr-1" />
+                  Refresh
+                </Button>
+                <Button
+                  onClick={handleDisconnectGoogle}
+                  variant="secondary"
+                  size="sm"
+                >
+                  Disconnect
+                </Button>
+              </div>
+            </div>
+          </div>
+        </Card>
+      );
+    }
+
+    return (
+      <Card className="mb-6 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+        <div className="p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="w-5 h-5 rounded-full bg-gray-400 flex items-center justify-center">
+                <div className="w-2 h-2 bg-white rounded-full"></div>
+              </div>
+              <div>
+                <h3 className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                  Google Business Profile
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Connect to manage your business locations and reviews
+                </p>
+              </div>
+            </div>
+            <Button
+              onClick={handleConnectToGoogle}
+              variant="primary"
+              size="sm"
+            >
+              <ExternalLink size={14} className="mr-1" />
+              Connect Google
+            </Button>
+          </div>
+        </div>
+      </Card>
+    );
   };
 
   // Business Profile Card Component
@@ -405,57 +458,6 @@ export const Locations: React.FC = () => {
                   </div>
                 </div>
               )}
-            </div>
-          </div>
-
-          {/* Google Connection Section */}
-          <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <div className={`w-3 h-3 rounded-full ${isGoogleConnected ? 'bg-green-500' : 'bg-gray-300'}`} />
-                <div>
-                  <h3 className="text-lg font-medium text-gray-900 dark:text-white">
-                    {isGoogleConnected ? 'Google Business Profile Connected' : 'Connect Google Business Profile'}
-                  </h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {isGoogleConnected 
-                      ? 'Your Google Business Profile is connected and synced'
-                      : 'Connect your Google Business Profile to sync data and manage your online presence'
-                    }
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex space-x-3">
-                {isGoogleConnected ? (
-                  <Button
-                    onClick={handleDisconnectGoogle}
-                    variant="secondary"
-                    size="sm"
-                  >
-                    Disconnect
-                  </Button>
-                ) : (
-                  <Button
-                    onClick={handleConnectToGoogle}
-                    disabled={isConnecting}
-                    variant="primary"
-                    size="sm"
-                  >
-                    {isConnecting ? (
-                      <>
-                        <RefreshCw size={16} className="animate-spin mr-2" />
-                        Connecting...
-                      </>
-                    ) : (
-                      <>
-                        <ExternalLink size={16} className="mr-2" />
-                        Connect Google Account
-                      </>
-                    )}
-                  </Button>
-                )}
-              </div>
             </div>
           </div>
         </div>
@@ -669,7 +671,7 @@ export const Locations: React.FC = () => {
             <AlertCircle size={48} className="mx-auto text-red-500 mb-4" />
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">Error Loading Locations</h2>
             <p className="text-gray-600 dark:text-gray-400 mb-4">{error}</p>
-            <Button onClick={initializeLocations}>
+            <Button onClick={initializeComponent}>
               Try Again
             </Button>
           </div>
@@ -702,36 +704,8 @@ export const Locations: React.FC = () => {
         </Button>
       </div>
 
-      {/* Alert Messages */}
-      {oauthError && (
-        <Card className="border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20">
-          <div className="p-4">
-            <div className="flex items-start space-x-3">
-              <AlertCircle className="text-red-500 mt-0.5" size={20} />
-              <div className="flex-1">
-                <h3 className="text-sm font-medium text-red-800 dark:text-red-200">Error</h3>
-                <p className="text-sm text-red-700 dark:text-red-300 mt-1">{oauthError}</p>
-              </div>
-              <button onClick={() => setOauthError(null)} className="text-red-500 hover:text-red-700 ml-auto">×</button>
-            </div>
-          </div>
-        </Card>
-      )}
-
-      {oauthSuccess && (
-        <Card className="border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20">
-          <div className="p-4">
-            <div className="flex items-start space-x-3">
-              <CheckCircle className="text-green-500 mt-0.5" size={20} />
-              <div className="flex-1">
-                <h3 className="text-sm font-medium text-green-800 dark:text-green-200">Success</h3>
-                <p className="text-sm text-green-700 dark:text-green-300 mt-1">{oauthSuccess}</p>
-              </div>
-              <button onClick={() => setOauthSuccess(null)} className="text-green-500 hover:text-green-700 ml-auto">×</button>
-            </div>
-          </div>
-        </Card>
-      )}
+      {/* Google Connection Status */}
+      <GoogleConnectionStatus />
 
       {/* Data Discrepancies Alert */}
       <DataDiscrepanciesAlert />
