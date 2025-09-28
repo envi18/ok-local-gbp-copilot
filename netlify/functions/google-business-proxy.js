@@ -1,4 +1,5 @@
 // netlify/functions/google-business-proxy.js
+// Enhanced proxy with permission validation support
 
 const { createClient } = require('@supabase/supabase-js');
 
@@ -7,165 +8,178 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// Helper function to get valid access token
-async function getValidAccessToken(userId) {
+const headers = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Content-Type': 'application/json',
+};
+
+exports.handler = async (event, context) => {
+  // Handle preflight requests
+  if (event.httpMethod === 'OPTIONS') {
+    return { statusCode: 200, headers, body: '' };
+  }
+
+  if (event.httpMethod !== 'POST') {
+    return {
+      statusCode: 405,
+      headers,
+      body: JSON.stringify({ error: 'Method not allowed' })
+    };
+  }
+
   try {
-    // Get current token
-    const { data: tokens, error } = await supabase
+    const { user_id, endpoint, method = 'GET', data, useOAuth2 = false } = JSON.parse(event.body);
+
+    if (!user_id || !endpoint) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ error: 'Missing required parameters' })
+      };
+    }
+
+    // Get the user's OAuth token
+    const { data: tokenData, error: tokenError } = await supabase
       .from('google_oauth_tokens')
       .select('*')
-      .eq('user_id', userId)
+      .eq('user_id', user_id)
       .eq('is_active', true)
-      .order('created_at', { ascending: false })
-      .limit(1);
+      .single();
 
-    if (error || !tokens || tokens.length === 0) {
-      throw new Error('No active OAuth token found');
+    if (tokenError || !tokenData) {
+      return {
+        statusCode: 401,
+        headers,
+        body: JSON.stringify({ error: 'No valid OAuth token found' })
+      };
     }
 
-    const token = tokens[0];
+    // Check if token is expired
+    const expiresAt = new Date(tokenData.expires_at);
     const now = new Date();
-    const expiresAt = new Date(token.expires_at);
-
-    // If token is still valid, return it
-    if (now < expiresAt) {
-      return token.access_token;
+    
+    if (expiresAt <= now) {
+      // Try to refresh the token
+      const refreshResult = await refreshAccessToken(tokenData.refresh_token, user_id);
+      if (!refreshResult.success) {
+        return {
+          statusCode: 401,
+          headers,
+          body: JSON.stringify({ error: 'Token expired and refresh failed' })
+        };
+      }
+      tokenData.access_token = refreshResult.access_token;
     }
 
-    // Token expired, refresh it
-    const refreshResponse = await fetch('https://oauth2.googleapis.com/token', {
+    // Determine the base URL based on the endpoint type
+    let baseUrl;
+    if (useOAuth2 || endpoint === '/userinfo') {
+      // Use OAuth2 API for user info
+      baseUrl = 'https://www.googleapis.com/oauth2/v2';
+    } else {
+      // Use Google Business Profile API
+      baseUrl = 'https://mybusinessbusinessinformation.googleapis.com/v1';
+    }
+
+    // Construct the full URL
+    const url = `${baseUrl}${endpoint}`;
+
+    // Make the request to Google API
+    const requestOptions = {
+      method: method,
+      headers: {
+        'Authorization': `Bearer ${tokenData.access_token}`,
+        'Content-Type': 'application/json',
+      },
+    };
+
+    if (data && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
+      requestOptions.body = JSON.stringify(data);
+    }
+
+    console.log(`Making ${method} request to: ${url}`);
+
+    const response = await fetch(url, requestOptions);
+    const responseData = await response.text();
+
+    // Log the response for debugging
+    console.log(`Response status: ${response.status}`);
+    console.log(`Response data: ${responseData.substring(0, 500)}...`);
+
+    // Return the response
+    return {
+      statusCode: response.status,
+      headers,
+      body: responseData
+    };
+
+  } catch (error) {
+    console.error('Proxy error:', error);
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ 
+        error: 'Internal server error', 
+        details: error.message 
+      })
+    };
+  }
+};
+
+// Helper function to refresh access token
+async function refreshAccessToken(refreshToken, userId) {
+  try {
+    const response = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
         client_id: process.env.GOOGLE_CLIENT_ID,
         client_secret: process.env.GOOGLE_CLIENT_SECRET,
-        refresh_token: token.refresh_token,
-        grant_type: 'refresh_token',
       }),
     });
 
-    if (!refreshResponse.ok) {
-      throw new Error('Failed to refresh token');
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('Token refresh failed:', errorData);
+      return { success: false, error: errorData.error_description || 'Token refresh failed' };
     }
 
-    const refreshData = await refreshResponse.json();
-    const newExpiresAt = new Date(Date.now() + refreshData.expires_in * 1000);
+    const tokenData = await response.json();
+    
+    // Calculate expiration time
+    const expiresAt = new Date();
+    expiresAt.setSeconds(expiresAt.getSeconds() + tokenData.expires_in);
 
-    // Update token in database
-    await supabase
+    // Update the database with new token
+    const { error: updateError } = await supabase
       .from('google_oauth_tokens')
       .update({
-        access_token: refreshData.access_token,
-        expires_at: newExpiresAt.toISOString(),
-        updated_at: new Date().toISOString(),
+        access_token: tokenData.access_token,
+        expires_at: expiresAt.toISOString(),
+        updated_at: new Date().toISOString()
       })
       .eq('user_id', userId)
       .eq('is_active', true);
 
-    return refreshData.access_token;
-  } catch (error) {
-    console.error('Error getting valid access token:', error);
-    throw error;
-  }
-}
-
-// Helper function to make Google API requests
-async function makeGoogleAPIRequest(accessToken, endpoint, method = 'GET', body = null) {
-  const baseUrl = 'https://mybusinessbusinessinformation.googleapis.com/v1';
-  const url = endpoint.startsWith('http') ? endpoint : `${baseUrl}${endpoint}`;
-  
-  const options = {
-    method,
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-  };
-
-  if (body && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
-    options.body = JSON.stringify(body);
-  }
-
-  const response = await fetch(url, options);
-  
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Google API error: ${response.status} - ${errorText}`);
-  }
-
-  return await response.json();
-}
-
-exports.handler = async (event, context) => {
-  // Handle CORS
-  const headers = {
-    'Access-Control-Allow-Origin': process.env.SITE_URL || 'https://ok-local-gbp.netlify.app',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  };
-
-  if (event.httpMethod === 'OPTIONS') {
-    return {
-      statusCode: 200,
-      headers,
-      body: '',
-    };
-  }
-
-  try {
-    const { body } = event;
-    const requestBody = body ? JSON.parse(body) : null;
-
-    // Extract required parameters from request body
-    const userId = requestBody?.user_id;
-    const endpoint = requestBody?.endpoint;
-    const method = requestBody?.method || 'GET';
-
-    if (!userId) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({ error: 'user_id is required' }),
-      };
+    if (updateError) {
+      console.error('Failed to update refreshed token:', updateError);
+      return { success: false, error: 'Failed to store refreshed token' };
     }
 
-    if (!endpoint) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({ error: 'endpoint is required' }),
-      };
-    }
-
-    // Get valid access token
-    const accessToken = await getValidAccessToken(userId);
-
-    // Make the Google API request
-    const result = await makeGoogleAPIRequest(
-      accessToken,
-      endpoint,
-      method,
-      requestBody?.data
-    );
-
-    return {
-      statusCode: 200,
-      headers,
-      body: JSON.stringify(result),
+    return { 
+      success: true, 
+      access_token: tokenData.access_token,
+      expires_at: expiresAt.toISOString()
     };
 
   } catch (error) {
-    console.error('Google Business API Proxy Error:', error);
-    
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ 
-        error: error.message || 'Internal server error',
-        details: error.stack 
-      }),
-    };
+    console.error('Token refresh error:', error);
+    return { success: false, error: error.message };
   }
-};
+}

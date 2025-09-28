@@ -1,12 +1,11 @@
 // src/components/pages/Locations.tsx
-// STEP 3: Complete replacement for your Locations component with Google Business Profile integration
+// Updated with permission validation integration
 
 import {
   AlertCircle,
   Building,
   CheckCircle,
   Clock,
-  ExternalLink,
   Eye,
   Globe,
   Info,
@@ -15,7 +14,6 @@ import {
   MousePointer,
   Navigation,
   Phone,
-  Plus,
   RefreshCw,
   Star,
   TrendingUp,
@@ -24,12 +22,14 @@ import {
 import React, { useEffect, useState } from 'react';
 import { useGoogleBusinessProfile } from '../../hooks/useGoogleBusinessProfile';
 import { dataService, type Location } from '../../lib/dataService';
-import { googleAuthService, useGoogleConnection } from '../../lib/googleAuth';
 import { googleBusinessProfileService, type BusinessLocation } from '../../lib/googleBusinessProfileService';
 import { supabase } from '../../lib/supabase';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
+// NEW: Import the enhanced hook and UI component
+import { useGoogleConnectionWithValidation } from '../../hooks/useGoogleConnectionWithValidation';
+import { PermissionValidationUI } from '../ui/PermissionValidationUI';
 
 interface BusinessProfileData {
   name: string;
@@ -72,16 +72,16 @@ export const Locations: React.FC = () => {
   const [businessProfile] = useState<BusinessProfileData>(mockBusinessProfile);
   const [dataDiscrepancies, setDataDiscrepancies] = useState<DataDiscrepancy[]>([]);
 
-  // Use the Google connection hook
-  const {
-    connected: isGoogleConnected,
-    loading: googleLoading,
-    error: googleError,
-    tokenData,
-    refresh: refreshGoogleConnection,
-    disconnect: disconnectGoogle,
-    clearAndReconnect
-  } = useGoogleConnection(user?.id || null);
+  // UPDATED: Use the new permission validation hook instead of the old one
+const {
+  connected: isGoogleConnected,
+  loading: googleLoading,
+  validating: googleValidating,
+  error: googleError,
+  permissionStatus,
+  disconnect: disconnectGoogle,
+  retry: retryGoogleConnection
+} = useGoogleConnectionWithValidation(user?.id || null);
 
   // Use the Google Business Profile hook
   const {
@@ -109,11 +109,6 @@ export const Locations: React.FC = () => {
   useEffect(() => {
     initializeComponent();
   }, []);
-
-  // Handle OAuth callback on component mount
-  useEffect(() => {
-    checkForOAuthCallback();
-  }, [user]);
 
   // Sync Google location data with local business profile
   useEffect(() => {
@@ -151,35 +146,6 @@ export const Locations: React.FC = () => {
       setError('Failed to load locations');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const checkForOAuthCallback = async () => {
-    if (!user) return;
-
-    const urlParams = new URLSearchParams(window.location.search);
-    const code = urlParams.get('code');
-    const error = urlParams.get('error');
-
-    console.log('Checking OAuth callback - code:', !!code, 'error:', error);
-
-    if (error) {
-      console.error('OAuth error:', error);
-      window.history.replaceState({}, document.title, window.location.pathname);
-      return;
-    }
-
-    if (code) {
-      console.log('Processing OAuth callback...');
-      try {
-        await googleAuthService.exchangeCodeForTokens(code, user.id);
-        console.log('OAuth flow completed successfully!');
-        
-        window.history.replaceState({}, document.title, window.location.pathname);
-        refreshGoogleConnection();
-      } catch (error) {
-        console.error('OAuth callback error:', error);
-      }
     }
   };
 
@@ -226,25 +192,6 @@ export const Locations: React.FC = () => {
     setDataDiscrepancies(discrepancies);
   };
 
-  const handleConnectToGoogle = () => {
-    try {
-      const authUrl = googleAuthService.getAuthUrl();
-      console.log('Generated OAuth URL:', authUrl);
-      window.location.href = authUrl;
-    } catch (error) {
-      console.error('Error generating auth URL:', error);
-    }
-  };
-
-  const handleDisconnectGoogle = async () => {
-    const success = await disconnectGoogle();
-    if (success) {
-      console.log('Successfully disconnected from Google');
-    } else {
-      console.error('Failed to disconnect from Google');
-    }
-  };
-
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'synced': return CheckCircle;
@@ -263,123 +210,19 @@ export const Locations: React.FC = () => {
     }
   };
 
-  // Google Connection Status Component
+  // UPDATED: Google Connection Status Component using new permission validation UI
   const GoogleConnectionStatus: React.FC = () => {
-    if (googleLoading) {
-      return (
-        <Card className="mb-6">
-          <div className="p-4">
-            <div className="flex items-center space-x-3">
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
-              <span className="text-gray-600 dark:text-gray-400">Checking Google connection...</span>
-            </div>
-          </div>
-        </Card>
-      );
-    }
-
-    if (googleError) {
-      return (
-        <Card className="mb-6 border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20">
-          <div className="p-4">
-            <div className="flex items-start space-x-3">
-              <AlertCircle className="text-red-500 mt-0.5" size={20} />
-              <div className="flex-1">
-                <h3 className="text-sm font-medium text-red-800 dark:text-red-200">Google Connection Error</h3>
-                <p className="text-sm text-red-700 dark:text-red-300 mt-1">{googleError}</p>
-                <div className="flex space-x-3 mt-3">
-                  <button
-                    onClick={refreshGoogleConnection}
-                    className="text-sm text-red-600 hover:text-red-500 underline"
-                  >
-                    Try again
-                  </button>
-                  {googleError.includes('expired') && (
-                    <button
-                      onClick={clearAndReconnect}
-                      className="text-sm text-blue-600 hover:text-blue-500 underline"
-                    >
-                      Reconnect to Google
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </Card>
-      );
-    }
-
-    if (isGoogleConnected && tokenData) {
-      return (
-        <Card className="mb-6 border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20">
-          <div className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <CheckCircle className="text-green-500" size={20} />
-                <div>
-                  <h3 className="text-sm font-medium text-green-800 dark:text-green-200">
-                    Connected to Google Business Profile
-                  </h3>
-                  <p className="text-sm text-green-700 dark:text-green-300">
-                    Connected as {tokenData.google_email}
-                  </p>
-                  <p className="text-xs text-green-600 dark:text-green-400">
-                    {hasData ? `${accounts.length} business account(s), ${googleLocations.length} location(s)` : 'Loading business data...'}
-                  </p>
-                </div>
-              </div>
-              <div className="flex space-x-2">
-                <Button
-                  onClick={refreshGoogleConnection}
-                  variant="secondary"
-                  size="sm"
-                >
-                  <RefreshCw size={14} className="mr-1" />
-                  Refresh
-                </Button>
-                <Button
-                  onClick={handleDisconnectGoogle}
-                  variant="secondary"
-                  size="sm"
-                >
-                  Disconnect
-                </Button>
-              </div>
-            </div>
-          </div>
-        </Card>
-      );
-    }
-
     return (
-      <Card className="mb-6 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
-        <div className="p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="w-5 h-5 rounded-full bg-gray-400 flex items-center justify-center">
-                <div className="w-2 h-2 bg-white rounded-full"></div>
-              </div>
-              <div>
-                <h3 className="text-sm font-medium text-gray-800 dark:text-gray-200">
-                  Google Business Profile
-                </h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Connect to manage your business locations and reviews
-                </p>
-              </div>
-            </div>
-            <Button
-              onClick={handleConnectToGoogle}
-              variant="primary"
-              size="sm"
-            >
-              <ExternalLink size={14} className="mr-1" />
-              Connect Google
-            </Button>
-          </div>
-        </div>
-      </Card>
+      <PermissionValidationUI
+        connected={isGoogleConnected}
+        loading={googleLoading}
+        validating={googleValidating}
+        error={googleError}
+        permissionStatus={permissionStatus}
+        onConnect={() => {}} // Component handles this internally
+        onRetry={retryGoogleConnection}
+        onDisconnect={disconnectGoogle}
+      />
     );
   };
 
@@ -847,7 +690,7 @@ export const Locations: React.FC = () => {
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
               {displayData.name}
             </h2>
-            {isGoogleConnected && (
+            {isGoogleConnected && permissionStatus?.isValid && (
               <Badge variant="success" size="sm">
                 <CheckCircle size={12} className="mr-1" />
                 Google Connected
@@ -1077,30 +920,6 @@ export const Locations: React.FC = () => {
     );
   };
 
-  const SummaryCard: React.FC<{
-    title: string;
-    value: string | number;
-    icon: React.ElementType;
-    gradient: string;
-    loading?: boolean;
-  }> = ({ title, value, icon: Icon, gradient, loading = false }) => (
-    <Card hover>
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">{title}</p>
-          {loading ? (
-            <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-12"></div>
-          ) : (
-            <p className="text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-          )}
-        </div>
-        <div className={`p-3 rounded-full ${gradient}`}>
-          <Icon size={20} className="text-white" />
-        </div>
-      </div>
-    </Card>
-  );
-
   if (loading) {
     return (
       <div className="space-y-8">
@@ -1145,36 +964,19 @@ export const Locations: React.FC = () => {
     );
   }
 
-  // Calculate summary statistics - use Google data if available, fallback to local data
-  const totalReviewsFromLocal = locations.reduce((sum, loc) => sum + loc.review_count, 0);
-  const averageRatingFromLocal = locations.length > 0 
-    ? locations.reduce((sum, loc) => sum + (loc.rating || 0), 0) / locations.length
-    : 0;
-  const syncedLocations = locations.filter(loc => loc.gbp_sync_status === 'synced').length;
-
-  // Use Google data if available, otherwise use local data
-  const displayTotalReviews = hasReviews ? totalReviews : totalReviewsFromLocal;
-  const displayAverageRating = hasReviews ? averageRating : averageRatingFromLocal;
-  const displayTotalLocations = hasLocations ? googleLocations.length : locations.length;
-
   return (
     <div className="space-y-8">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
-            Locations
-          </h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-1">
-            Manage your business locations and Google Business Profile
-          </p>
-        </div>
-        <Button icon={Plus}>
-          Add Location
-        </Button>
+      {/* Header - REMOVED Add Location button as requested */}
+      <div>
+        <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
+          Locations
+        </h1>
+        <p className="text-gray-600 dark:text-gray-400 mt-1">
+          Manage your business locations and Google Business Profile
+        </p>
       </div>
 
-      {/* Google Connection Status */}
+      {/* UPDATED: Google Connection Status with Permission Validation */}
       <GoogleConnectionStatus />
 
       {/* Data Discrepancies Alert */}
@@ -1185,40 +987,6 @@ export const Locations: React.FC = () => {
 
       {/* Google Business Profile Data */}
       <GoogleBusinessData />
-
-      {/* Summary Cards - show Google data if available, otherwise local data */}
-      {(displayTotalLocations > 0 || isGoogleConnected) && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
-          <SummaryCard
-            title="Total Locations"
-            value={displayTotalLocations}
-            icon={MapPin}
-            gradient="bg-gradient-to-r from-[#667eea] to-[#764ba2]"
-            loading={isGoogleConnected && gbpLoading.locations}
-          />
-          <SummaryCard
-            title="Average Rating"
-            value={displayAverageRating.toFixed(1)}
-            icon={Star}
-            gradient="bg-gradient-to-r from-[#f093fb] to-[#f5576c]"
-            loading={isGoogleConnected && gbpLoading.reviews}
-          />
-          <SummaryCard
-            title="Total Reviews"
-            value={displayTotalReviews.toLocaleString()}
-            icon={MessageSquare}
-            gradient="bg-gradient-to-r from-[#11998e] to-[#38ef7d]"
-            loading={isGoogleConnected && gbpLoading.reviews}
-          />
-          <SummaryCard
-            title="Synced Locations"
-            value={isGoogleConnected ? (hasLocations ? googleLocations.length : 0) : syncedLocations}
-            icon={CheckCircle}
-            gradient="bg-gradient-to-r from-[#f45a4e] to-[#e53e3e]"
-            loading={isGoogleConnected && gbpLoading.locations}
-          />
-        </div>
-      )}
 
       {/* Local Locations Grid - only show if there are local locations and no Google locations */}
       {locations.length > 0 && !hasLocations && (
@@ -1234,38 +1002,6 @@ export const Locations: React.FC = () => {
             ))}
           </div>
         </>
-      )}
-
-      {/* Empty state */}
-      {!hasLocations && locations.length === 0 && isGoogleConnected && (
-        <Card>
-          <div className="text-center py-12">
-            <MapPin size={48} className="mx-auto text-gray-400 mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-              No business locations found
-            </h3>
-            <p className="text-gray-600 dark:text-gray-400 mb-6">
-              Your Google Business Profile is connected, but no locations were found. You may need to set up your business profile on Google first.
-            </p>
-            <div className="flex justify-center space-x-4">
-              <Button 
-                onClick={() => window.open('https://business.google.com', '_blank')}
-                variant="secondary"
-              >
-                <ExternalLink size={16} className="mr-2" />
-                Open Google Business
-              </Button>
-              <Button 
-                onClick={refreshLocations}
-                variant="primary"
-                disabled={gbpLoading.locations}
-              >
-                <RefreshCw size={16} className={`mr-2 ${gbpLoading.locations ? 'animate-spin' : ''}`} />
-                Refresh
-              </Button>
-            </div>
-          </div>
-        </Card>
       )}
     </div>
   );

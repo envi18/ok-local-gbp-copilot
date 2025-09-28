@@ -1,9 +1,10 @@
-// src/lib/googleAuth.ts - Complete Google Auth Service with Fixed Token Refresh
-import { supabase } from './supabase'; // Make sure you import your supabase client
+// src/lib/googleAuth.ts - Fixed to work with existing Netlify function
+import { supabase } from './supabase';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 const REDIRECT_URI = `${window.location.origin}/locations`;
 
+// Updated scopes to ensure all required permissions
 const SCOPES = [
   'https://www.googleapis.com/auth/business.manage',
   'https://www.googleapis.com/auth/userinfo.email',
@@ -17,7 +18,7 @@ export interface GoogleTokenData {
   access_token: string;
   refresh_token: string;
   expires_at: string;
-  scope: string;
+  scopes: string[];
   google_email: string;
   is_active: boolean;
   created_at: string;
@@ -39,8 +40,9 @@ export class GoogleAuthService {
       scope: SCOPES,
       response_type: 'code',
       access_type: 'offline',
-      prompt: 'consent',
-      state: 'security_token_' + Math.random().toString(36).substring(2)
+      prompt: 'consent', // Force consent screen to ensure all permissions are shown
+      state: 'security_token_' + Math.random().toString(36).substring(2),
+      include_granted_scopes: 'true' // Include previously granted scopes
     });
 
     return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
@@ -48,8 +50,8 @@ export class GoogleAuthService {
 
   async exchangeCodeForTokens(code: string, userId: string) {
     try {
-      // Using production function URL
-      const response = await fetch('https://ok-local-gbp.netlify.app/.netlify/functions/google-oauth-exchange', {
+      // Use the correct function name that exists in your project
+      const response = await fetch('/.netlify/functions/google-oauth-exchange', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -61,12 +63,24 @@ export class GoogleAuthService {
         }),
       });
 
+      const responseData = await response.text();
+      
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Token exchange failed');
+        let errorData;
+        try {
+          errorData = JSON.parse(responseData);
+        } catch {
+          errorData = { error: 'Unknown error', details: responseData };
+        }
+        
+        console.error('OAuth exchange failed:', errorData);
+        throw new Error(errorData.details || errorData.error || 'Token exchange failed');
       }
 
-      return await response.json();
+      const result = JSON.parse(responseData);
+      console.log('OAuth exchange successful:', result);
+      return result;
+      
     } catch (error) {
       console.error('Error exchanging code for tokens:', error);
       throw new Error('Failed to authenticate with Google');
@@ -75,8 +89,8 @@ export class GoogleAuthService {
 
   async refreshAccessToken(userId: string) {
     try {
-      // Using production function URL
-      const response = await fetch('https://ok-local-gbp.netlify.app/.netlify/functions/google-refresh-token', {
+      // Check if refresh token function exists, otherwise handle it in the main function
+      const response = await fetch('/.netlify/functions/google-refresh-token', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -85,246 +99,142 @@ export class GoogleAuthService {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || 'Token refresh failed');
       }
 
       return await response.json();
     } catch (error) {
       console.error('Error refreshing access token:', error);
+      // Fallback: try to refresh using the existing tokens directly
+      return this.fallbackTokenRefresh(userId);
+    }
+  }
+
+  private async fallbackTokenRefresh(userId: string) {
+    try {
+      // Get the current token data directly from Supabase
+      const { data: tokenData, error: fetchError } = await supabase
+        .from('google_oauth_tokens')
+        .select('refresh_token, access_token')
+        .eq('user_id', userId)
+        .eq('is_active', true)
+        .single();
+
+      if (fetchError || !tokenData?.refresh_token) {
+        throw new Error('No refresh token found');
+      }
+
+      // Make the refresh request directly
+      const refreshResponse = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          grant_type: 'refresh_token',
+          refresh_token: tokenData.refresh_token,
+          client_id: GOOGLE_CLIENT_ID,
+        }),
+      });
+
+      if (!refreshResponse.ok) {
+        throw new Error('Token refresh failed at Google');
+      }
+
+      const refreshData = await refreshResponse.json();
+      
+      // Update the database with new token
+      const expiresAt = new Date();
+      expiresAt.setSeconds(expiresAt.getSeconds() + refreshData.expires_in);
+
+      const { error: updateError } = await supabase
+        .from('google_oauth_tokens')
+        .update({
+          access_token: refreshData.access_token,
+          expires_at: expiresAt.toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('user_id', userId)
+        .eq('is_active', true);
+
+      if (updateError) {
+        throw new Error('Failed to store refreshed token');
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error('Fallback token refresh failed:', error);
       throw new Error('Failed to refresh Google access token');
     }
   }
 
-  // NEW: Check Google connection status
+  // Check Google connection status
   async checkConnectionStatus(userId: string): Promise<ConnectionStatus> {
     try {
-      console.log('Checking Google connection status for user:', userId);
-      
-      // Query for active tokens for this user
+      if (!userId) {
+        return { connected: false, loading: false, error: null };
+      }
+
       const { data, error } = await supabase
         .from('google_oauth_tokens')
         .select('*')
         .eq('user_id', userId)
         .eq('is_active', true)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle(); // Use maybeSingle() to handle no results gracefully
+        .single();
 
-      if (error) {
-        console.error('Error checking Google connection:', error);
-        return {
-          connected: false,
-          loading: false,
-          error: `Database error: ${error.message}`
-        };
+      if (error || !data) {
+        return { connected: false, loading: false, error: null };
       }
 
-      if (!data) {
-        console.log('No active Google connection found');
-        return {
-          connected: false,
-          loading: false,
-          error: null
-        };
-      }
-
-      console.log('Found active Google connection:', {
-        google_email: data.google_email,
-        expires_at: data.expires_at,
-        created_at: data.created_at
-      });
-
-      // Check if token is still valid (not expired)
-      const now = new Date();
+      // Check if token is expired
       const expiresAt = new Date(data.expires_at);
+      const now = new Date();
       
       if (expiresAt <= now) {
-        console.log('Token expired, attempting automatic refresh...');
-        
-        // Try to refresh the token automatically
+        // Try to refresh token
         try {
           await this.refreshAccessToken(userId);
-          
-          // Re-check status after refresh
-          const { data: refreshedData, error: refreshError } = await supabase
+          // Re-fetch updated token data
+          const { data: refreshedData } = await supabase
             .from('google_oauth_tokens')
             .select('*')
             .eq('user_id', userId)
             .eq('is_active', true)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-          if (refreshError || !refreshedData) {
-            throw new Error('Failed to retrieve refreshed token');
-          }
-
-          console.log('Token refreshed successfully');
-          return {
-            connected: true,
-            loading: false,
-            error: null,
-            tokenData: refreshedData
+            .single();
+          
+          return { 
+            connected: true, 
+            loading: false, 
+            error: null, 
+            tokenData: refreshedData 
           };
         } catch (refreshError) {
-          console.error('Failed to refresh expired token:', refreshError);
-          return {
-            connected: false,
-            loading: false,
-            error: 'Token expired and refresh failed - please reconnect to Google',
-            tokenData: data
+          return { 
+            connected: false, 
+            loading: false, 
+            error: 'Token expired and refresh failed' 
           };
         }
       }
 
-      return {
-        connected: true,
-        loading: false,
-        error: null,
-        tokenData: data
+      return { 
+        connected: true, 
+        loading: false, 
+        error: null, 
+        tokenData: data 
       };
-      
-    } catch (err) {
-      console.error('Unexpected error checking Google connection:', err);
-      return {
-        connected: false,
-        loading: false,
-        error: 'Failed to check connection status'
+
+    } catch (error) {
+      console.error('Error checking connection status:', error);
+      return { 
+        connected: false, 
+        loading: false, 
+        error: error instanceof Error ? error.message : 'Connection check failed' 
       };
-    }
-  }
-
-  // NEW: Get valid access token (refresh if needed)
-  async getValidAccessToken(userId: string): Promise<string | null> {
-    try {
-      const status = await this.checkConnectionStatus(userId);
-      
-      if (!status.connected || !status.tokenData) {
-        return null;
-      }
-
-      return status.tokenData.access_token;
-    } catch (error) {
-      console.error('Error getting valid access token:', error);
-      return null;
-    }
-  }
-
-  // NEW: Disconnect Google account
-  async disconnect(userId: string): Promise<boolean> {
-    try {
-      console.log('Disconnecting Google account for user:', userId);
-      
-      const { error } = await supabase
-        .from('google_oauth_tokens')
-        .update({ is_active: false })
-        .eq('user_id', userId);
-
-      if (error) {
-        console.error('Error disconnecting Google account:', error);
-        return false;
-      }
-
-      console.log('Successfully disconnected Google account');
-      return true;
-    } catch (error) {
-      console.error('Unexpected error disconnecting Google account:', error);
-      return false;
-    }
-  }
-
-  // NEW: Clear expired tokens and force reconnection
-  async clearExpiredTokens(userId: string): Promise<boolean> {
-    try {
-      console.log('Clearing expired tokens for user:', userId);
-      
-      const { error } = await supabase
-        .from('google_oauth_tokens')
-        .update({ is_active: false })
-        .eq('user_id', userId)
-        .lt('expires_at', new Date().toISOString());
-
-      if (error) {
-        console.error('Error clearing expired tokens:', error);
-        return false;
-      }
-
-      console.log('Successfully cleared expired tokens');
-      return true;
-    } catch (error) {
-      console.error('Unexpected error clearing expired tokens:', error);
-      return false;
     }
   }
 }
 
+// Export singleton instance
 export const googleAuthService = new GoogleAuthService();
-
-// NEW: React hook for Google connection status
-import { useCallback, useEffect, useState } from 'react';
-
-export function useGoogleConnection(userId: string | null) {
-  const [status, setStatus] = useState<ConnectionStatus>({
-    connected: false,
-    loading: true,
-    error: null
-  });
-
-  const checkStatus = useCallback(async () => {
-    if (!userId) {
-      setStatus({ connected: false, loading: false, error: null });
-      return;
-    }
-
-    setStatus(prev => ({ ...prev, loading: true }));
-    
-    try {
-      const result = await googleAuthService.checkConnectionStatus(userId);
-      setStatus(result);
-    } catch (error) {
-      setStatus({
-        connected: false,
-        loading: false,
-        error: 'Failed to check connection status'
-      });
-    }
-  }, [userId]);
-
-  useEffect(() => {
-    checkStatus();
-  }, [checkStatus]);
-
-  const refresh = async () => {
-    if (!userId) return;
-    await checkStatus();
-  };
-
-  const disconnect = async () => {
-    if (!userId) return false;
-    
-    const success = await googleAuthService.disconnect(userId);
-    if (success) {
-      setStatus({ connected: false, loading: false, error: null });
-    }
-    return success;
-  };
-
-  const clearAndReconnect = async () => {
-    if (!userId) return;
-    
-    // Clear expired tokens first
-    await googleAuthService.clearExpiredTokens(userId);
-    
-    // Then redirect to OAuth
-    const authUrl = googleAuthService.getAuthUrl();
-    window.location.href = authUrl;
-  };
-
-  return {
-    ...status,
-    refresh,
-    disconnect,
-    clearAndReconnect
-  };
-}
