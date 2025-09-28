@@ -32,8 +32,7 @@ interface BusinessProfileData {
   phone: string;
   website: string;
   services: string[];
-  category?: string; // Added this field
-  // This would come from signup/onboarding data
+  category?: string;
 }
 
 // Mock data for demonstration - this would come from signup/onboarding in real implementation
@@ -57,7 +56,6 @@ interface GoogleBusinessData {
   rating?: number;
   review_count?: number;
   category?: string;
-  // Additional fields that might come from Google Business Profile
 }
 
 interface DataDiscrepancy {
@@ -135,18 +133,23 @@ export const Locations: React.FC = () => {
 
       console.log('Checking existing Google connection for user:', user.id);
 
-      const { data: tokens } = await supabase
+      const { data: tokens, error } = await supabase
         .from('google_oauth_tokens')
         .select('*')
         .eq('user_id', user.id)
         .eq('is_active', true)
         .single();
 
+      if (error) {
+        console.log('No existing Google connection found:', error.message);
+        console.log('Google tokens found:', false);
+        return;
+      }
+
       console.log('Google tokens found:', !!tokens);
 
       if (tokens) {
         setIsGoogleConnected(true);
-        // TODO: Fetch Google Business Profile data here
         await fetchGoogleBusinessData();
       }
     } catch (error) {
@@ -191,7 +194,7 @@ export const Locations: React.FC = () => {
       
       if (result.success) {
         setIsGoogleConnected(true);
-        setOauthSuccess(`Successfully connected Google account for ${result.user.email}!`);
+        setOauthSuccess('Successfully connected Google account!');
         console.log('Setting connected state to true, fetching business data...');
         await fetchGoogleBusinessData();
       } else {

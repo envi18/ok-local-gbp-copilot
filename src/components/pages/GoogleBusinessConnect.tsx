@@ -3,7 +3,6 @@ import React, { useEffect, useState } from 'react';
 import { googleAuthService } from '../../lib/googleAuth';
 import { supabase } from '../../lib/supabase';
 
-
 export const GoogleBusinessConnect: React.FC = () => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -20,12 +19,17 @@ export const GoogleBusinessConnect: React.FC = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data: tokens } = await supabase
+      const { data: tokens, error } = await supabase
         .from('google_oauth_tokens')
         .select('*')
         .eq('user_id', user.id)
         .eq('is_active', true)
         .single();
+
+      if (error) {
+        console.log('No existing Google connection found:', error.message);
+        return;
+      }
 
       if (tokens) {
         setIsConnected(true);
@@ -64,7 +68,7 @@ export const GoogleBusinessConnect: React.FC = () => {
       
       if (result.success) {
         setIsConnected(true);
-        setSuccess(`Successfully connected Google account for ${result.user.email}!`);
+        setSuccess('Successfully connected Google account!');
       } else {
         throw new Error('Token exchange failed');
       }
