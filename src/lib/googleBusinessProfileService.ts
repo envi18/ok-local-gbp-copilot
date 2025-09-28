@@ -160,7 +160,7 @@ export interface GoogleBusinessProfilePost {
 }
 
 class GoogleBusinessProfileService {
-  private readonly baseUrl = 'https://mybusinessbusinessinformation.googleapis.com/v1';
+  private readonly baseUrl = 'https://mybusiness.googleapis.com/v4';
   private readonly baseUrlGBP = 'https://mybusiness.googleapis.com/v4';
 
   /**
