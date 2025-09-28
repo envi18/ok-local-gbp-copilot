@@ -1,5 +1,163 @@
-// Update your netlify/functions/google-oauth-exchange.js
-// Replace the token storage section with this code:
+// netlify/functions/google-oauth-exchange.js
+// Complete corrected function
+
+const { createClient } = require('@supabase/supabase-js');
+const crypto = require('crypto');
+
+exports.handler = async (event, context) => {
+  // Add CORS headers
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Content-Type': 'application/json',
+  };
+
+  // Handle preflight requests
+  if (event.httpMethod === 'OPTIONS') {
+    return {
+      statusCode: 200,
+      headers,
+      body: '',
+    };
+  }
+
+  // Only allow POST requests
+  if (event.httpMethod !== 'POST') {
+    return {
+      statusCode: 405,
+      headers,
+      body: JSON.stringify({ error: 'Method not allowed' }),
+    };
+  }
+
+  try {
+    console.log('Starting OAuth exchange process...');
+    
+    // Check environment variables
+    const requiredEnvVars = [
+      'GOOGLE_CLIENT_ID',
+      'GOOGLE_CLIENT_SECRET',
+      'VITE_SUPABASE_URL',
+      'SUPABASE_SERVICE_ROLE_KEY'
+    ];
+    
+    const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
+    if (missingVars.length > 0) {
+      console.error('Missing environment variables:', missingVars);
+      return {
+        statusCode: 500,
+        headers,
+        body: JSON.stringify({ 
+          error: 'Server configuration error',
+          details: `Missing environment variables: ${missingVars.join(', ')}`
+        }),
+      };
+    }
+
+    // Parse request body
+    let requestBody;
+    try {
+      requestBody = JSON.parse(event.body);
+      console.log('Request received with keys:', Object.keys(requestBody));
+    } catch (parseError) {
+      console.error('Error parsing request body:', parseError);
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ error: 'Invalid JSON in request body' }),
+      };
+    }
+
+    const { code, userId, redirectUri } = requestBody;
+
+    // Validate required fields
+    if (!code || !userId || !redirectUri) {
+      console.error('Missing required fields:', { code: !!code, userId: !!userId, redirectUri: !!redirectUri });
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ 
+          error: 'Missing required fields',
+          required: ['code', 'userId', 'redirectUri']
+        }),
+      };
+    }
+
+    console.log('Exchanging code for tokens with Google...');
+    console.log('Redirect URI:', redirectUri);
+    
+    // Exchange authorization code for tokens
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        client_id: process.env.GOOGLE_CLIENT_ID,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET,
+        code: code,
+        grant_type: 'authorization_code',
+        redirect_uri: redirectUri,
+      }),
+    });
+
+    const tokenData = await tokenResponse.json();
+
+    if (!tokenResponse.ok) {
+      console.error('Google token exchange failed:', tokenData);
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ 
+          error: 'Google OAuth token exchange failed',
+          details: tokenData.error_description || tokenData.error
+        }),
+      };
+    }
+
+    console.log('Successfully received tokens from Google');
+    console.log('Token data keys:', Object.keys(tokenData));
+
+    // Initialize Supabase client with service role key
+    const supabase = createClient(
+      process.env.VITE_SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    );
+
+    // Get user's organization_id from their profile
+    const { data: userProfile, error: profileError } = await supabase
+      .from('profiles')
+      .select('organization_id')
+      .eq('user_id', userId)
+      .single();
+
+    if (profileError || !userProfile?.organization_id) {
+      console.error('Error getting user organization:', profileError);
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ 
+          error: 'User organization not found',
+          details: 'User must have a valid organization to connect Google account'
+        }),
+      };
+    }
+
+    // Get Google user info to store additional data
+    const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: {
+        'Authorization': `Bearer ${tokenData.access_token}`,
+      },
+    });
+
+    let googleUserInfo = {};
+    if (userInfoResponse.ok) {
+      googleUserInfo = await userInfoResponse.json();
+      console.log('Retrieved Google user info');
+    } else {
+      console.warn('Could not retrieve Google user info');
+    }
 
     console.log('Storing tokens in Supabase...');
 
@@ -112,3 +270,16 @@
         tokenId: insertData.id
       }),
     };
+
+  } catch (error) {
+    console.error('Unexpected error in OAuth exchange:', error);
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ 
+        error: 'Internal server error',
+        details: error.message
+      }),
+    };
+  }
+};
