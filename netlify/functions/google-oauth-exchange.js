@@ -1,8 +1,3 @@
-You're right, I apologize for the repetition. Let me help you get out of that quote prompt first.
-Press Ctrl+C to exit the hanging command prompt, then let's continue.
-Once you're back to a normal prompt, let's create the actual files:
-bash# Create the OAuth exchange function
-cat > netlify/functions/google-oauth-exchange.js << 'EOF'
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL;

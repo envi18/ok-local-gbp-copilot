@@ -1,28 +1,27 @@
-import React, { useState, useEffect } from 'react';
-import { ThemeProvider } from './contexts/ThemeContext';
+import type { User } from '@supabase/supabase-js';
+import { useEffect, useState } from 'react';
+import { Footer } from './components/layout/Footer';
 import { Header } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
-import { Dashboard } from './components/pages/Dashboard';
-import { Locations } from './components/pages/Locations';
-import { Rankings } from './components/pages/Rankings';
-import { Reviews } from './components/pages/Reviews';
-import { Posts } from './components/pages/Posts';
-import { Media } from './components/pages/Media';
+import { AdminSetup } from './components/pages/AdminSetup';
+import { AIInsights } from './components/pages/AIInsights';
 import { Alerts } from './components/pages/Alerts';
 import { Automations } from './components/pages/Automations';
-import { AIInsights } from './components/pages/AIInsights';
+import { Dashboard } from './components/pages/Dashboard';
+import { DatabaseCheck } from './components/pages/DatabaseCheck';
+import { FixProfile } from './components/pages/FixProfile';
+import { Locations } from './components/pages/Locations';
+import { Login } from './components/pages/Login';
+import { Media } from './components/pages/Media';
+import { Posts } from './components/pages/Posts';
+import { PremiumListings } from './components/pages/PremiumListings';
+import { Rankings } from './components/pages/Rankings';
+import { Reviews } from './components/pages/Reviews';
 import { SettingsGeneral } from './components/pages/SettingsGeneral';
 import { SettingsUsers } from './components/pages/SettingsUsers';
 import { VoiceSearch } from './components/pages/VoiceSearch';
-import { PremiumListings } from './components/pages/PremiumListings';
-import { Login } from './components/pages/Login';
-import { Footer } from './components/layout/Footer';
-import { AdminSetup } from './components/pages/AdminSetup';
-import { DatabaseCheck } from './components/pages/DatabaseCheck';
-import { FixProfile } from './components/pages/FixProfile';
-import { GoogleBusinessConnect } from './components/pages/GoogleBusinessConnect';
+import { ThemeProvider } from './contexts/ThemeContext';
 import { supabase } from './lib/supabase';
-import type { User } from '@supabase/supabase-js';
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -51,7 +50,7 @@ function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Handle Google OAuth callback
+  // Handle Google OAuth callback - redirect to locations page
   useEffect(() => {
     const handleGoogleCallback = () => {
       const urlParams = new URLSearchParams(window.location.search);
@@ -59,10 +58,10 @@ function App() {
       const error = urlParams.get('error');
       
       if (code || error) {
-        // If we have OAuth parameters, switch to google-business section
-        setActiveSection('google-business');
+        // If we have OAuth parameters, switch to locations section
+        setActiveSection('locations');
         // Clean up URL without refreshing page
-        window.history.replaceState({}, document.title, window.location.pathname);
+       // window.history.replaceState({}, document.title, window.location.pathname);
       }
     };
 
@@ -115,8 +114,6 @@ function App() {
         return <Alerts />;
       case 'automations':
         return <Automations />;
-      case 'google-business':
-        return <GoogleBusinessConnect />;
       case 'settings':
         return <SettingsGeneral />;
       case 'users':

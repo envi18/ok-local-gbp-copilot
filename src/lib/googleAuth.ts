@@ -1,6 +1,6 @@
-// src/lib/googleAuth.ts - Updated to use Netlify Functions backend
+// src/lib/googleAuth.ts - Temporarily using production functions for testing
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-const REDIRECT_URI = `${window.location.origin}/auth/google/callback`;
+const REDIRECT_URI = `${window.location.origin}/locations`;
 
 const SCOPES = [
   'https://www.googleapis.com/auth/business.manage',
@@ -25,7 +25,8 @@ export class GoogleAuthService {
 
   async exchangeCodeForTokens(code: string, userId: string) {
     try {
-      const response = await fetch('/api/google-oauth-exchange', {
+      // TEMPORARY: Using production function URL for testing
+      const response = await fetch('https://ok-local-gbp.netlify.app/.netlify/functions/google-oauth-exchange', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -51,7 +52,8 @@ export class GoogleAuthService {
 
   async refreshAccessToken(userId: string) {
     try {
-      const response = await fetch('/api/google-refresh-token', {
+      // TEMPORARY: Using production function URL for testing
+      const response = await fetch('https://ok-local-gbp.netlify.app/.netlify/functions/google-refresh-token', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
