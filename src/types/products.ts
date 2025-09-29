@@ -1,5 +1,5 @@
 // src/types/products.ts
-// Product Access Control Types
+// Updated product types to match the new access rules
 
 export type ProductType = 'core' | 'addon';
 export type ProductAccessRequestStatus = 'pending' | 'approved' | 'denied';
@@ -52,17 +52,20 @@ export const PRODUCTS = {
 
 export type ProductName = typeof PRODUCTS[keyof typeof PRODUCTS];
 
-// Pages/routes that require specific products
+// Updated pages/routes that require specific products based on new requirements
 export const PRODUCT_ROUTES: Record<string, ProductName> = {
-  '/locations': PRODUCTS.GBP_MANAGEMENT,
+  // GBP Management product routes
   '/reviews': PRODUCTS.GBP_MANAGEMENT,
   '/posts': PRODUCTS.GBP_MANAGEMENT,
   '/media': PRODUCTS.GBP_MANAGEMENT,
   '/rankings': PRODUCTS.GBP_MANAGEMENT,
-  '/reports': PRODUCTS.GBP_MANAGEMENT,
-  '/alerts': PRODUCTS.GBP_MANAGEMENT,
-  '/automation': PRODUCTS.GBP_MANAGEMENT,
+  '/automations': PRODUCTS.GBP_MANAGEMENT,
+  '/alerts': PRODUCTS.GBP_MANAGEMENT, // Also requires manager/admin role
+  
+  // Other product routes
   '/ai-visibility': PRODUCTS.AI_VISIBILITY,
   '/voice-search': PRODUCTS.VOICE_SEARCH,
   '/premium-listings': PRODUCTS.PREMIUM_LISTINGS,
+  
+  // Note: locations and reports are now public routes (no product required)
 };

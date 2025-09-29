@@ -1,3 +1,6 @@
+// src/components/layout/Sidebar.tsx
+// Updated to remove hardcoded role restrictions - let route protection handle access control
+
 import {
   AlertTriangle,
   BarChart3,
@@ -49,24 +52,27 @@ interface SidebarProps {
   isDeveloperModeActive?: boolean;
 }
 
+// Updated menu items - removed most role restrictions, let route protection handle them
 const managementItems: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'locations', label: 'Locations', icon: MapPin, badge: '1' },
+  { id: 'reports', label: 'Reports', icon: BarChart3 }, // Now visible to all users
   { id: 'ai-visibility', label: 'AI Visibility', icon: Brain, badge: 'New', badgeVariant: 'gradient' },
   { id: 'reviews', label: 'Reviews', icon: Star, badge: 'Mock', badgeVariant: 'warning' },
   { id: 'posts', label: 'Posts', icon: FileText },
   { id: 'media', label: 'Media', icon: Image },
   { id: 'rankings', label: 'Map Rankings', icon: TrendingUp },
+  { id: 'automations', label: 'Automations', icon: Zap }, // Now visible to all users
   { id: 'voice-search', label: 'Voice Search', icon: Mic, badge: 'New', badgeVariant: 'gradient' },
-  { id: 'premium-listings', label: 'Premium Listings', icon: Globe, allowedRoles: ['manager', 'admin'] },
-  { id: 'reports', label: 'Reports', icon: BarChart3, allowedRoles: ['manager', 'admin'] },
-  { id: 'alerts', label: 'Alerts', icon: AlertTriangle, badge: '3', badgeVariant: 'error' },
-  { id: 'automations', label: 'Automations', icon: Zap, allowedRoles: ['manager', 'admin'] },
+  { id: 'premium-listings', label: 'Premium Listings', icon: Globe }, // Now visible to all users
+  { id: 'alerts', label: 'Alerts', icon: AlertTriangle, badge: '3', badgeVariant: 'error', allowedRoles: ['manager', 'admin'] }, // Keep manager/admin restriction
 ];
 
+// Settings items - keep admin restrictions for admin tools
 const settingsItems: NavItem[] = [
   { id: 'settings', label: 'General', icon: Settings },
-  { id: 'users', label: 'Users', icon: Users, requiredRole: 'admin' },
+  { id: 'customers', label: 'Customers', icon: Users, allowedRoles: ['manager', 'admin'] },
+  { id: 'users', label: 'Users', icon: UserCheck, requiredRole: 'admin' },
   { id: 'admin-setup', label: 'Database Setup', icon: Database, requiredRole: 'admin' },
   { id: 'db-check', label: 'Database Check', icon: Search, requiredRole: 'admin' },
   { id: 'fix-profile', label: 'Fix Profile', icon: UserCheck, requiredRole: 'admin' },
@@ -88,12 +94,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
     // If no role restrictions, everyone can access
     if (!item.requiredRole && !item.allowedRoles) return true;
     
-    // Check required role (exact match)
+    // Check required role (hierarchical - user can access user+, manager can access user+manager+, etc)
     if (item.requiredRole) {
-      return userRole === item.requiredRole;
+      const roleHierarchy: Record<string, number> = {
+        user: 1,
+        manager: 2,
+        admin: 3,
+      };
+      
+      const userRoleLevel = roleHierarchy[userRole] || 1;
+      const requiredRoleLevel = roleHierarchy[item.requiredRole] || 1;
+      
+      return userRoleLevel >= requiredRoleLevel;
     }
     
-    // Check allowed roles (any match)
+    // Check allowed roles (exact match)
     if (item.allowedRoles) {
       return item.allowedRoles.includes(userRole as 'user' | 'manager' | 'admin');
     }
@@ -104,8 +119,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const NavItemComponent: React.FC<{ item: NavItem }> = ({ item }) => {
     const canAccess = hasAccess(item);
     
-    // Don't render items the user can't access (unless in developer mode)
-    if (!canAccess && !isDeveloperModeActive) {
+    // Show all items to users - let the route protection handle access control
+    // Only hide admin-only items from non-admin users (unless in developer mode)
+    const shouldShow = canAccess || isDeveloperModeActive;
+    
+    if (!shouldShow) {
       return null;
     }
     
@@ -120,9 +138,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
             ? 'bg-gradient-to-r from-[#f45a4e] to-[#e53e3e] text-white shadow-md'
             : canAccess 
               ? 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
-              : 'text-gray-400 dark:text-gray-600 opacity-50 cursor-not-allowed'
+              : 'text-gray-400 dark:text-gray-600 opacity-50'
         }`}
-        disabled={!canAccess && !isDeveloperModeActive}
       >
         {/* Icon */}
         <item.icon
@@ -138,7 +155,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Label */}
         <span className="font-medium text-sm">{item.label}</span>
         
-        {/* Role restriction indicator (only show in developer mode) */}
+        {/* Role restriction indicator (only show in developer mode for restricted items) */}
         {isDeveloperModeActive && !canAccess && (
           <div className="ml-auto flex items-center gap-1">
             <Badge variant="error" size="sm">
@@ -148,7 +165,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         )}
         
         {/* Regular badge */}
-        {item.badge && canAccess && (
+        {item.badge && (canAccess || !isDeveloperModeActive) && (
           <Badge variant={item.badgeVariant ?? 'info'} size="sm" className="ml-auto">
             {item.badge}
           </Badge>
