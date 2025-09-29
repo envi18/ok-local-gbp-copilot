@@ -2,8 +2,8 @@
 
 **Last Updated:** September 29, 2025  
 **Production URL:** https://ok-local-gbp.netlify.app/  
-**Status:** AI Visibility Feature Complete - Product Access Control Complete  
-**Current Phase:** Phase 6B - AI Visibility with Mock Data Fully Functional
+**Status:** Developer Role Toggle & Permissions Complete - Admin Interface Complete  
+**Current Phase:** Phase 7A - Role-Based Permission System Complete
 
 ---
 
@@ -11,7 +11,7 @@
 
 **Purpose:** Google Business Profile management platform for local businesses with AI visibility tracking  
 **Tech Stack:** React + TypeScript + Vite + Supabase + Netlify Functions  
-**Architecture:** Full-stack SaaS with product-based access control, OAuth backend, and automated AI reporting
+**Architecture:** Full-stack SaaS with product-based access control, OAuth backend, automated AI reporting, and role-based permissions
 
 ---
 
@@ -34,7 +34,8 @@
 - User authentication and organization management
 - Production deployment on Netlify
 - **Product access control system** ✅
-- **AI Visibility database schema** ✅ NEW
+- **AI Visibility database schema** ✅
+- **Role-based permission system** ✅ NEW
 
 **Google OAuth Integration (100%)**
 
@@ -55,7 +56,27 @@
 - ✅ Request access workflow with email notifications
 - ✅ Route protection ready for implementation
 
-**AI Visibility Feature (100%)** ✅ NEW
+**Role-Based Permission System (100%)** ✅ NEW
+
+- ✅ Developer role toggle system integrated into sidebar
+- ✅ Three-tier role hierarchy: User → Manager → Admin
+- ✅ Granular menu item permissions with visual indicators
+- ✅ Real-time role switching for testing (development only)
+- ✅ localStorage persistence of developer role overrides
+- ✅ Permission logic: `requiredRole` (exact match) and `allowedRoles` (array match)
+- ✅ Visual feedback for restricted access in developer mode
+- ✅ Role-based avatar colors and status indicators
+
+**Admin Interface & User Management (100%)** ✅
+
+- ✅ Complete user management table with search, filters, pagination
+- ✅ Admin actions: Edit, Login As, Suspend/Activate users
+- ✅ User detail modal with product assignment and notes management
+- ✅ Comprehensive audit log viewer with JSON change tracking
+- ✅ Mock data with realistic user scenarios (customer, suspended, manager)
+- ✅ Full CRUD operations ready for API integration
+
+**AI Visibility Feature (100%)** ✅
 
 - ✅ Complete database schema (8 tables) in `supabase/migrations/`
 - ✅ Type definitions in `src/types/aiVisibility.ts`
@@ -83,7 +104,7 @@
 - organization_products (product access per organization)
 - product_access_requests (upgrade request tracking)
 
--- AI Visibility tables: ✅ NEW
+-- AI Visibility tables:
 - ai_visibility_reports (monthly report data)
 - ai_visibility_queries (query sets with auto-generation)
 - ai_visibility_competitors (detected competitors)
@@ -101,42 +122,42 @@
 
 ## 🚧 CURRENT DEVELOPMENT PHASE
 
-**Phase:** Phase 6B - AI Visibility Complete with Mock Data  
-**Status:** Feature fully functional, ready for real AI platform integration
+**Phase:** Phase 7A - Role-Based Permission System Complete  
+**Status:** Developer testing infrastructure complete, ready for API integration
 
 ### **Completed This Session (Sept 29, 2025):**
 
-1. **Product Access Control System** ✅
+1. **Developer Role Toggle System** ✅ NEW
 
-   - Fixed all TypeScript errors
-   - Clean separation: types → service → hooks → UI
-   - Working upgrade modal with "Request Access" functionality
-   - Database schema for product management
-   - Organization-level product assignment
+   - **Integrated Sidebar Toggle**: Built directly into sidebar menu below onboarding section
+   - **Three-Tier Roles**: User (basic access) → Manager (business features) → Admin (full access)
+   - **Real-Time Testing**: Instant role switching with immediate permission updates
+   - **Development-Only**: Only appears on localhost/development environment
+   - **Visual Feedback**: Red "DEVELOPER MODE" header with current role display
+   - **Persistent State**: localStorage saves developer role overrides
+   - **Expandable UI**: Clean dropdown with role selection options
 
-2. **AI Visibility Feature - Complete Implementation** ✅
+2. **Granular Permission System** ✅ NEW
 
-   - **Database Schema**: 8 tables with RLS policies, indexes, relationships
-   - **Type Definitions**: Complete TypeScript interfaces for all data structures
-   - **Mock Data Service**: Realistic 6-month historical data matching PDF examples
-   - **UI Components**:
-     - Monthly report selector dropdown
-     - Overall visibility score display
-     - Individual platform performance cards (ChatGPT, Claude, Gemini, Perplexity)
-     - **Multi-line trend chart** showing all 5 platforms + overall score
-     - Recent achievements section (green success cards)
-     - Priority actions with expandable markdown instructions
-     - Query sets tab (5/10 auto-generated, +Add button)
-     - Competitors tab (with "Not a Competitor" disable toggle)
-   - **Removed**: Manual buttons, Settings tab, Filter button (as requested)
+   - **Admin-Only Features**: Users, Database Setup, Database Check, Fix Profile
+   - **Manager/Admin Features**: Premium Listings, Reports, Automations, Onboarding
+   - **User Features**: Basic management tools and general settings
+   - **Visual Indicators**: Grayed-out restricted items, role badges in developer mode
+   - **Permission Logic**: Support for both exact role matching and role array matching
 
-3. **Chart Visualization** ✅
-   - Replaced vertical bars with multi-line chart
-   - 5 distinct colored lines (Overall, ChatGPT, Claude, Gemini, Perplexity)
-   - Overall score line thicker and more prominent
-   - Proper line thickness for readability
-   - Y-axis scale (0-100), X-axis month labels
-   - Legend showing all platforms with color coding
+3. **Role-Based Visual System** ✅ NEW
+
+   - **Avatar Colors**: Purple (Admin), Green (Manager), Red (Customer)
+   - **Status Indicators**: "Override" badge when developer mode active
+   - **Menu Item States**: Clear visual distinction between accessible/restricted items
+   - **Developer Feedback**: Shows which role is required for restricted items
+
+4. **Architecture Integration** ✅ NEW
+
+   - **App.tsx Integration**: `effectiveRole` system with developer override support
+   - **Sidebar Props**: `userRole` and `isDeveloperModeActive` passed correctly
+   - **Hook System**: `useDeveloperMode()` hook manages state and persistence
+   - **TypeScript Support**: Full type safety for all role-based operations
 
 ### **Current Blockers:**
 
@@ -155,7 +176,69 @@
 
 ## 🔑 CRITICAL IMPLEMENTATION DETAILS
 
-### AI Visibility Architecture (NEW)
+### Role-Based Permission Architecture (NEW)
+
+```typescript
+// Role hierarchy
+User (basic access):
+  - Dashboard, Locations, AI Visibility, Reviews, Posts, Media, Rankings
+  - Voice Search, Alerts, General Settings
+
+Manager (business features):
+  - All User features +
+  - Premium Listings, Reports, Automations, Onboarding
+
+Admin (full system access):
+  - All Manager features +
+  - Users, Database Setup, Database Check, Fix Profile
+
+// Permission checking
+const hasAccess = (item: NavItem): boolean => {
+  if (item.requiredRole) return userRole === item.requiredRole;
+  if (item.allowedRoles) return item.allowedRoles.includes(userRole);
+  return true; // No restrictions
+};
+
+// Developer override system
+const effectiveRole = developerRole || getUserRole();
+const isDeveloperModeActive = isDeveloperMode && !!developerRole;
+```
+
+### Developer Testing Workflow (NEW)
+
+```typescript
+// Development environment detection
+const devMode = import.meta.env.DEV || window.location.hostname === 'localhost';
+
+// Role persistence
+localStorage.setItem('developer-role', role);
+const savedRole = localStorage.getItem('developer-role');
+
+// Real-time permission testing
+- Switch to Admin → See Users menu appear
+- Switch to Manager → See business features, Users disappears
+- Switch to User → See only basic features
+- "Use Real Role" → Return to actual user permissions
+```
+
+### Admin Interface Architecture
+
+```typescript
+// User management features
+- Search users by name, email, organization
+- Filter by status (Active/Suspended)
+- Paginated display (20 per page)
+- Edit user products and internal notes
+- Suspend/activate with reason tracking
+- Comprehensive audit log with JSON change tracking
+
+// Mock data structure
+- 3 sample users: active customer, suspended customer, manager
+- Realistic product assignments and usage patterns
+- Complete audit trail for all admin actions
+```
+
+### AI Visibility Architecture
 
 ```typescript
 // Monthly automated reports
@@ -213,7 +296,16 @@ API Proxy Request →
 ### Key Files & Functions
 
 ```typescript
-// AI Visibility (NEW)
+// Role-Based Permissions (NEW)
+src/hooks/useDeveloperMode.ts - Developer mode hook and state management
+src/components/layout/Sidebar.tsx - Integrated developer toggle and permissions
+src/App.tsx - Role passing and effective role calculation
+
+// Admin Interface
+src/components/pages/SettingsUsers.tsx - Complete user management interface
+src/lib/mockUserData.ts - Realistic mock data for testing
+
+// AI Visibility
 src/types/aiVisibility.ts - Type definitions
 src/lib/aiVisibilityMockService.ts - Mock data service
 src/components/pages/AIInsights.tsx - Complete UI
@@ -251,7 +343,37 @@ SUPABASE_SERVICE_ROLE_KEY - ✅ Backend access working
 
 ## 🎯 NEXT DEVELOPMENT PHASES
 
-### **Phase 6C: Real AI Platform Integration (FUTURE)**
+### **Phase 7B: Admin Interface API Integration (IMMEDIATE NEXT)**
+
+**Prerequisites:**
+
+- Role-based permission system complete ✅
+- Mock admin interface complete ✅
+- Database schema for user management
+
+**Implementation Tasks:**
+
+1. Replace mock data with real Supabase queries
+2. Implement user CRUD operations
+3. Add product assignment functionality
+4. Build audit log database operations
+5. Add email notifications for user actions
+6. Implement "Login As" session management
+
+**Estimated Timeline:** 1-2 weeks
+
+### **Phase 7C: Route Protection Implementation (NEXT)**
+
+**Tasks:**
+
+1. Apply `useProductAccess` hook to all protected routes
+2. Show upgrade modal for users without access
+3. Test all product access scenarios
+4. Add loading states during access checks
+
+**Estimated Timeline:** 2-3 hours
+
+### **Phase 8A: Real AI Platform Integration (FUTURE)**
 
 **Prerequisites:**
 
@@ -272,7 +394,7 @@ SUPABASE_SERVICE_ROLE_KEY - ✅ Backend access working
 
 **Estimated Timeline:** 2-3 weeks
 
-### **Phase 6D: Monthly Automation (FUTURE)**
+### **Phase 8B: Monthly Automation (FUTURE)**
 
 **Tasks:**
 
@@ -284,18 +406,7 @@ SUPABASE_SERVICE_ROLE_KEY - ✅ Backend access working
 
 **Estimated Timeline:** 1 week
 
-### **Phase 7: Route Protection Implementation (IMMEDIATE NEXT)**
-
-**Tasks:**
-
-1. Apply `useProductAccess` hook to all protected routes
-2. Show upgrade modal for users without access
-3. Test all product access scenarios
-4. Add loading states during access checks
-
-**Estimated Timeline:** 2-3 hours
-
-### **Phase 8: Google API Integration (WHEN APPROVED)**
+### **Phase 9: Google API Integration (WHEN APPROVED)**
 
 **Ready to Activate:**
 
@@ -307,6 +418,39 @@ SUPABASE_SERVICE_ROLE_KEY - ✅ Backend access working
 ---
 
 ## 🐛 DEBUGGING HISTORY & SOLUTIONS
+
+### Session 9 - Sept 29, 2025 (Role-Based Permissions Complete)
+
+**Developer Role Toggle Integration**
+
+- **Challenge:** Floating component positioning and dropdown cutoff issues
+- **Solution:** Integrated toggle directly into sidebar below onboarding section
+- **Architecture:** Built into Sidebar component with expandable dropdown design
+- **Result:** Clean, accessible developer testing interface with no positioning issues
+
+**Permission System Implementation**
+
+- **Challenge:** Complex role-based menu visibility logic
+- **Solution:** Implemented both `requiredRole` (exact match) and `allowedRoles` (array match)
+- **Permission Structure:**
+  - Admin-only: Users, Database Setup, Database Check, Fix Profile
+  - Manager/Admin: Premium Listings, Reports, Automations, Onboarding
+  - Everyone: Basic management features and general settings
+- **Result:** Granular permission control with visual feedback
+
+**Role Prop Passing Issue**
+
+- **Problem:** Role changes not reflecting in sidebar menu items
+- **Root Cause:** App.tsx was passing `userRole` instead of `effectiveRole`
+- **Solution:** Fixed to pass `userRole={effectiveRole}` to Sidebar component
+- **Result:** Real-time role switching working perfectly
+
+**Developer Mode Visual System**
+
+- **Implementation:** Red "DEVELOPER MODE" header with expandable dropdown
+- **Role Indicators:** Color-coded avatars (Purple=Admin, Green=Manager, Red=Customer)
+- **State Management:** localStorage persistence with clear/reset functionality
+- **Result:** Professional developer testing interface integrated into production UI
 
 ### Session 8 - Sept 29, 2025 (AI Visibility Complete)
 
@@ -374,6 +518,13 @@ SUPABASE_SERVICE_ROLE_KEY - ✅ Backend access working
 
 ### Known Working Solutions
 
+**Role-Based Permissions:**
+
+- Integrate developer tools into existing UI components ✅
+- Use `effectiveRole` for consistent permission checking ✅
+- localStorage for developer state persistence ✅
+- Both exact role matching and role array support ✅
+
 **AI Visibility Chart:**
 
 - Use SVG with viewBox for responsive charts ✅
@@ -410,6 +561,8 @@ SUPABASE_SERVICE_ROLE_KEY - ✅ Backend access working
 - **Mock Data Strategy:** UI development complete before API costs ✅
 - **AI Visibility:** Monthly automated reports with historical tracking ✅
 - **Chart Visualization:** Multi-line charts for trend analysis ✅
+- **Role-Based Permissions:** Three-tier hierarchy with granular control ✅ NEW
+- **Developer Testing:** Integrated sidebar toggle for real-time role testing ✅ NEW
 
 ### Code Quality Standards
 
@@ -420,18 +573,42 @@ SUPABASE_SERVICE_ROLE_KEY - ✅ Backend access working
 - Professional UI components with loading states ✅
 - Clean compilation with zero errors or warnings ✅
 - SVG-based charts for crisp rendering ✅
+- Integrated developer tooling for efficient testing ✅ NEW
 
 ### Deployment Strategy
 
 - Continuous deployment via Netlify ✅
 - Environment-specific configurations ✅
 - Production-ready error handling ✅
+- Developer-only features properly gated ✅ NEW
 
 ---
 
 ## 🔍 TESTING PROTOCOL
 
-### AI Visibility Testing (NEW)
+### Role-Based Permission Testing (NEW)
+
+1. ✅ Access developer toggle in sidebar (development only)
+2. ✅ Switch to Admin role - verify Users menu appears
+3. ✅ Switch to Manager role - verify business features available, Users hidden
+4. ✅ Switch to User role - verify only basic features visible
+5. ✅ Test "Use Real Role" to clear developer override
+6. ✅ Verify role persistence across browser refresh
+7. ✅ Confirm visual indicators (avatar colors, override badges)
+8. ✅ Test permission logic for all menu items
+
+### Admin Interface Testing
+
+1. ✅ View user management table with mock data
+2. ✅ Test search functionality (name, email, organization)
+3. ✅ Test status filter (All/Active/Suspended)
+4. ✅ Test pagination controls
+5. ✅ Test Edit user modal (products and notes)
+6. ✅ Test user suspend/activate with reason
+7. ✅ Test audit log viewer with JSON change display
+8. ✅ Verify TypeScript compilation (no errors)
+
+### AI Visibility Testing
 
 1. ✅ View AI Insights page with mock data
 2. ✅ Switch between monthly reports using dropdown
@@ -464,24 +641,33 @@ SUPABASE_SERVICE_ROLE_KEY - ✅ Backend access working
 
 ## 💡 FUTURE DEVELOPMENT GUIDANCE
 
-### For Future AI Development Sessions
+### For Future Development Sessions
 
+- Role-based permission system is COMPLETE with developer testing tools
+- Admin interface is COMPLETE with full CRUD operations (mock data)
 - AI Visibility feature is COMPLETE with mock data
 - Product access control is COMPLETE and ready for use
 - OAuth integration is COMPLETE and verified working
 - Architecture is stable and production-ready
-- Next: Implement real AI platform integrations when ready
-- Consider API costs before implementing live integrations
+- Next: API integration for admin interface and route protection
 
 ### Current Development Focus
 
-**Priority 1: Route Protection** (2-3 hours)
+**Priority 1: Admin Interface API Integration** (1-2 weeks)
+
+- Replace mock data with Supabase queries
+- Implement user CRUD operations
+- Add product assignment functionality
+- Build audit log database operations
+- Add email notifications
+
+**Priority 2: Route Protection** (2-3 hours)
 
 - Apply product access checks to all routes
 - Show upgrade modal for unauthorized users
 - Test all access scenarios
 
-**Priority 2: Real AI Integration** (When APIs acquired)
+**Priority 3: Real AI Integration** (When APIs acquired)
 
 - Start with one platform as proof-of-concept
 - Implement query generation logic
@@ -489,7 +675,7 @@ SUPABASE_SERVICE_ROLE_KEY - ✅ Backend access working
 - Scale to all platforms
 - Add monthly automation
 
-**Priority 3: Google API Integration** (When Approved)
+**Priority 4: Google API Integration** (When Approved)
 
 - Business account discovery
 - Location data synchronization
@@ -505,6 +691,8 @@ SUPABASE_SERVICE_ROLE_KEY - ✅ Backend access working
 - ✅ OAuth architecture is working - don't modify unnecessarily
 - ✅ 429 errors are expected until Google grants API access
 - ✅ Consider API costs before implementing live AI integrations
+- ✅ Pass `effectiveRole` not `userRole` for permission checking NEW
+- ✅ Integrate developer tools into existing UI rather than floating components NEW
 
 ---
 
@@ -512,9 +700,9 @@ SUPABASE_SERVICE_ROLE_KEY - ✅ Backend access working
 
 **Ready to Begin:**
 
-1. **Route Protection** - Implement product access checks on all routes (2-3 hours)
-2. **User Context** - Replace 'test-org-id' with real user/org data
-3. **Testing** - Comprehensive testing of all AI Visibility features
+1. **Admin Interface API Integration** - Replace mock data with real database operations (1-2 weeks)
+2. **Route Protection** - Implement product access checks on all routes (2-3 hours)
+3. **User Context** - Replace 'test-org-id' with real user/org data
 
 **Awaiting Decisions:**
 
@@ -529,6 +717,6 @@ SUPABASE_SERVICE_ROLE_KEY - ✅ Backend access working
 
 ---
 
-**Development Status:** All TypeScript errors resolved. Product access control complete. AI Visibility feature fully functional with mock data. Ready for route protection implementation and real AI platform integration.
+**Development Status:** All TypeScript errors resolved. Role-based permission system complete with integrated developer testing tools. Admin interface complete with full user management features. AI Visibility feature fully functional with mock data. Ready for API integration and route protection implementation.
 
-**Major Milestone:** Complete AI Visibility feature built from database to UI in single session with multi-line trend chart, monthly reports, and automated report architecture. System is production-ready pending API access and budget approval.
+**Major Milestone:** Complete role-based permission system with integrated developer testing interface. Three-tier role hierarchy (User/Manager/Admin) with granular menu permissions and real-time testing capability. Professional admin interface with comprehensive user management features ready for API integration.

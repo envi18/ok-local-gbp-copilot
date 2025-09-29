@@ -13,7 +13,7 @@ import { FixProfile } from './components/pages/FixProfile';
 import { Locations } from './components/pages/Locations';
 import { Login } from './components/pages/Login';
 import { Media } from './components/pages/Media';
-import Onboarding from './components/pages/Onboarding'; // changed to default import!
+import Onboarding from './components/pages/Onboarding';
 import { Posts } from './components/pages/Posts';
 import { PremiumListings } from './components/pages/PremiumListings';
 import { Rankings } from './components/pages/Rankings';
@@ -22,6 +22,7 @@ import { SettingsGeneral } from './components/pages/SettingsGeneral';
 import { SettingsUsers } from './components/pages/SettingsUsers';
 import { VoiceSearch } from './components/pages/VoiceSearch';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { useDeveloperMode } from './hooks/useDeveloperMode';
 import { supabase } from './lib/supabase';
 
 function App() {
@@ -29,6 +30,9 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [activeSection, setActiveSection] = useState('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  
+  // Developer mode integration
+  const { developerRole, isDeveloperMode } = useDeveloperMode();
 
   useEffect(() => {
     const getSession = async () => {
@@ -38,7 +42,7 @@ function App() {
     };
     getSession();
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => { // renamed to _event since it's not used
+      (_event, session) => {
         setUser(session?.user ?? null);
         setLoading(false);
       }
@@ -79,6 +83,17 @@ function App() {
   const handleMobileMenuClose = () => {
     setIsMobileMenuOpen(false);
   };
+
+  // Get the effective role - developer override or default to 'user'
+  // TODO: Replace 'user' with actual user role from database when you implement user roles
+  const getUserRole = () => {
+    // For now, return 'user' as default. Later you'll fetch this from your database
+    // based on the user's ID: user?.user_metadata?.role || 'user'
+    return 'user';
+  };
+
+  const effectiveRole = developerRole || getUserRole();
+  const isDeveloperModeActive = isDeveloperMode && !!developerRole;
 
   const renderContent = () => {
     switch (activeSection) {
@@ -153,6 +168,8 @@ function App() {
                 onSectionChange={setActiveSection}
                 isOpen={isMobileMenuOpen}
                 onClose={handleMobileMenuClose}
+                userRole={effectiveRole}
+                isDeveloperModeActive={isDeveloperModeActive}
               />
               <main className="flex-1 lg:ml-72 mt-16 p-4 lg:p-8 min-h-[calc(100vh-4rem)]">
                 {renderContent()}
