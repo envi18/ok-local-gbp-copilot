@@ -1,978 +1,666 @@
-import React, { useState } from 'react';
-import { Brain, TrendingUp, Target, Users, Search, AlertTriangle, CheckCircle, Zap, Eye, Download, Settings, Plus, Filter, Calendar, BarChart3, PieChart, Activity, Globe, Cpu, Sparkles, ArrowUp, ArrowDown, Minus } from 'lucide-react';
-import { Card } from '../ui/Card';
+// src/components/pages/AIInsights.tsx
+// Complete redesign with automated monthly reports
+
+import {
+  AlertCircle,
+  Award,
+  Brain,
+  Calendar,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Plus,
+  Target,
+  TrendingUp,
+  Users,
+  X
+} from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { AIVisibilityMockService } from '../../lib/aiVisibilityMockService';
+import type {
+  AIQuery,
+  AIVisibilityReport,
+  Achievement,
+  Competitor,
+  PlatformScore,
+  PriorityAction,
+  TrendDataPoint
+} from '../../types/aiVisibility';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
-
-interface AIEngine {
-  id: string;
-  name: string;
-  logo: string;
-  color: string;
-  visibilityScore: number;
-  trend: number;
-  citations: number;
-  lastUpdated: string;
-}
-
-interface QueryPerformance {
-  id: string;
-  query: string;
-  visibility: number;
-  change: number;
-  engine: string;
-  intent: 'high' | 'medium' | 'low';
-  mentions: number;
-}
-
-interface Competitor {
-  id: string;
-  name: string;
-  domain: string;
-  overallScore: number;
-  mentions: number;
-  trend: number;
-  engines: {
-    chatgpt: number;
-    claude: number;
-    gemini: number;
-    perplexity: number;
-  };
-}
-
-interface ContentGap {
-  id: string;
-  category: string;
-  severity: 'critical' | 'important' | 'minor';
-  description: string;
-  impact: number;
-  effort: 'low' | 'medium' | 'high';
-  status: 'open' | 'in-progress' | 'completed';
-}
-
-const mockAIEngines: AIEngine[] = [
-  {
-    id: 'chatgpt',
-    name: 'ChatGPT',
-    logo: '🤖',
-    color: 'from-green-500 to-green-600',
-    visibilityScore: 78,
-    trend: 12,
-    citations: 23,
-    lastUpdated: '2 hours ago'
-  },
-  {
-    id: 'claude',
-    name: 'Claude',
-    logo: '🧠',
-    color: 'from-blue-500 to-blue-600',
-    visibilityScore: 65,
-    trend: 8,
-    citations: 18,
-    lastUpdated: '3 hours ago'
-  },
-  {
-    id: 'gemini',
-    name: 'Gemini',
-    logo: '💎',
-    color: 'from-orange-500 to-orange-600',
-    visibilityScore: 72,
-    trend: -3,
-    citations: 21,
-    lastUpdated: '1 hour ago'
-  },
-  {
-    id: 'perplexity',
-    name: 'Perplexity',
-    logo: '🔍',
-    color: 'from-purple-500 to-purple-600',
-    visibilityScore: 69,
-    trend: 15,
-    citations: 19,
-    lastUpdated: '4 hours ago'
-  }
-];
-
-const mockQueries: QueryPerformance[] = [
-  {
-    id: '1',
-    query: 'best dermatologist downtown',
-    visibility: 85,
-    change: 12,
-    engine: 'ChatGPT',
-    intent: 'high',
-    mentions: 8
-  },
-  {
-    id: '2',
-    query: 'acne treatment specialist near me',
-    visibility: 72,
-    change: -5,
-    engine: 'Claude',
-    intent: 'high',
-    mentions: 6
-  },
-  {
-    id: '3',
-    query: 'skin care clinic reviews',
-    visibility: 68,
-    change: 18,
-    engine: 'Gemini',
-    intent: 'medium',
-    mentions: 12
-  },
-  {
-    id: '4',
-    query: 'dermatology services downtown',
-    visibility: 91,
-    change: 7,
-    engine: 'Perplexity',
-    intent: 'medium',
-    mentions: 15
-  },
-  {
-    id: '5',
-    query: 'cosmetic dermatology procedures',
-    visibility: 56,
-    change: -8,
-    engine: 'ChatGPT',
-    intent: 'low',
-    mentions: 4
-  }
-];
-
-const mockCompetitors: Competitor[] = [
-  {
-    id: '1',
-    name: 'Elite Dermatology Center',
-    domain: 'elitederm.com',
-    overallScore: 82,
-    mentions: 45,
-    trend: 8,
-    engines: {
-      chatgpt: 85,
-      claude: 78,
-      gemini: 84,
-      perplexity: 81
-    }
-  },
-  {
-    id: '2',
-    name: 'Downtown Skin Clinic',
-    domain: 'downtownskin.com',
-    overallScore: 71,
-    mentions: 32,
-    trend: -3,
-    engines: {
-      chatgpt: 68,
-      claude: 72,
-      gemini: 75,
-      perplexity: 69
-    }
-  },
-  {
-    id: '3',
-    name: 'Advanced Dermatology',
-    domain: 'advancedderm.com',
-    overallScore: 76,
-    mentions: 38,
-    trend: 12,
-    engines: {
-      chatgpt: 79,
-      claude: 74,
-      gemini: 78,
-      perplexity: 73
-    }
-  }
-];
-
-const mockContentGaps: ContentGap[] = [
-  {
-    id: '1',
-    category: 'NAP Consistency',
-    severity: 'critical',
-    description: 'Business address inconsistent across 3 AI engines',
-    impact: 25,
-    effort: 'low',
-    status: 'open'
-  },
-  {
-    id: '2',
-    category: 'Service Descriptions',
-    severity: 'important',
-    description: 'Missing detailed descriptions for cosmetic procedures',
-    impact: 18,
-    effort: 'medium',
-    status: 'in-progress'
-  },
-  {
-    id: '3',
-    category: 'Review Integration',
-    severity: 'minor',
-    description: 'Recent reviews not appearing in AI responses',
-    impact: 12,
-    effort: 'high',
-    status: 'open'
-  },
-  {
-    id: '4',
-    category: 'Business Hours',
-    severity: 'important',
-    description: 'Holiday hours not updated across platforms',
-    impact: 15,
-    effort: 'low',
-    status: 'completed'
-  }
-];
+import { Card } from '../ui/Card';
 
 export const AIInsights: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'reports' | 'queries' | 'competitors' | 'settings'>('reports');
-  const [activeReportTab, setActiveReportTab] = useState<'all' | 'strengths' | 'gaps' | 'recommendations' | 'implementation' | 'citations' | 'scores'>('all');
-  const [timePeriod, setTimePeriod] = useState<'7d' | '30d' | '90d' | 'custom'>('30d');
-  const [selectedEngine, setSelectedEngine] = useState<string | null>(null);
+  const organizationId = 'test-org-id'; // Get from auth context in production
 
-  const overallVisibilityScore = Math.round(mockAIEngines.reduce((sum, engine) => sum + engine.visibilityScore, 0) / mockAIEngines.length);
-  const overallTrend = Math.round(mockAIEngines.reduce((sum, engine) => sum + engine.trend, 0) / mockAIEngines.length);
+  // State
+  const [reports, setReports] = useState<AIVisibilityReport[]>([]);
+  const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
+  const [platformScores, setPlatformScores] = useState<PlatformScore[]>([]);
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
+  const [priorityActions, setPriorityActions] = useState<PriorityAction[]>([]);
+  const [competitors, setCompetitors] = useState<Competitor[]>([]);
+  const [queries, setQueries] = useState<AIQuery[]>([]);
+  const [trendData, setTrendData] = useState<TrendDataPoint[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedActions, setExpandedActions] = useState<Set<string>>(new Set());
+  const [activeTab, setActiveTab] = useState<'queries' | 'competitors'>('queries');
 
-  const StatCard: React.FC<{
-    title: string;
-    value: string | number;
-    icon: React.ElementType;
-    gradient: string;
-    trend?: number;
-    subtitle?: string;
-  }> = ({ title, value, icon: Icon, gradient, trend, subtitle }) => (
-    <Card hover glow className="group relative overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-      <div className="relative flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">{title}</p>
-          <p className="text-3xl font-bold text-gray-900 dark:text-white">{value}</p>
-          {trend !== undefined && (
-            <div className={`flex items-center gap-1 mt-1 text-sm ${trend >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {trend > 0 ? <ArrowUp size={14} /> : trend < 0 ? <ArrowDown size={14} /> : <Minus size={14} />}
-              <span>{Math.abs(trend)}%</span>
-            </div>
-          )}
-          {subtitle && <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">{subtitle}</p>}
-        </div>
-        <div className={`p-4 rounded-full bg-gradient-to-r ${gradient} shadow-lg`}>
-          <Icon size={24} className="text-white" />
-        </div>
-      </div>
-    </Card>
-  );
+  // Load initial data
+  useEffect(() => {
+    loadData();
+  }, []);
 
-  const AIEngineCard: React.FC<{ engine: AIEngine }> = ({ engine }) => (
-    <Card hover className="group cursor-pointer" onClick={() => setSelectedEngine(engine.id)}>
-      <div className="text-center">
-        <div className={`inline-flex p-4 rounded-full bg-gradient-to-r ${engine.color} mb-4 transition-transform duration-300 group-hover:scale-110`}>
-          <span className="text-2xl">{engine.logo}</span>
-        </div>
-        <h3 className="font-semibold text-gray-900 dark:text-white mb-2">{engine.name}</h3>
-        <div className="space-y-2">
-          <div className="flex items-center justify-center gap-2">
-            <span className="text-2xl font-bold text-gray-900 dark:text-white">{engine.visibilityScore}</span>
-            <div className={`flex items-center gap-1 text-sm ${engine.trend >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {engine.trend > 0 ? <ArrowUp size={12} /> : engine.trend < 0 ? <ArrowDown size={12} /> : <Minus size={12} />}
-              <span>{Math.abs(engine.trend)}%</span>
-            </div>
-          </div>
-          <p className="text-xs text-gray-600 dark:text-gray-400">{engine.citations} citations</p>
-          <p className="text-xs text-gray-500 dark:text-gray-500">Updated {engine.lastUpdated}</p>
-        </div>
-      </div>
-    </Card>
-  );
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [reportsData, competitorsData, queriesData, trendDataResult] = await Promise.all([
+        AIVisibilityMockService.getReports(organizationId),
+        AIVisibilityMockService.getCompetitors(organizationId),
+        AIVisibilityMockService.getQueries(organizationId),
+        AIVisibilityMockService.getTrendData(organizationId)
+      ]);
 
-  const QueryRow: React.FC<{ query: QueryPerformance }> = ({ query }) => (
-    <tr className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
-      <td className="px-4 py-3 text-sm text-gray-900 dark:text-white font-medium">{query.query}</td>
-      <td className="px-4 py-3 text-center">
-        <span className="text-lg font-bold text-gray-900 dark:text-white">{query.visibility}</span>
-      </td>
-      <td className="px-4 py-3 text-center">
-        <div className={`flex items-center justify-center gap-1 ${query.change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-          {query.change > 0 ? <ArrowUp size={14} /> : query.change < 0 ? <ArrowDown size={14} /> : <Minus size={14} />}
-          <span className="font-medium">{Math.abs(query.change)}%</span>
-        </div>
-      </td>
-      <td className="px-4 py-3 text-center">
-        <Badge variant="info" size="sm">{query.engine}</Badge>
-      </td>
-      <td className="px-4 py-3 text-center">
-        <Badge 
-          variant={query.intent === 'high' ? 'error' : query.intent === 'medium' ? 'warning' : 'success'} 
-          size="sm"
-        >
-          {query.intent}
-        </Badge>
-      </td>
-    </tr>
-  );
+      setReports(reportsData);
+      setCompetitors(competitorsData);
+      setQueries(queriesData);
+      setTrendData(trendDataResult);
 
-  const CompetitorCard: React.FC<{ competitor: Competitor }> = ({ competitor }) => (
-    <Card hover className="group">
-      <div className="flex items-start justify-between mb-4">
-        <div>
-          <h3 className="font-semibold text-gray-900 dark:text-white mb-1">{competitor.name}</h3>
-          <p className="text-sm text-gray-600 dark:text-gray-400">{competitor.domain}</p>
-          <div className="flex items-center gap-2 mt-2">
-            <span className="text-2xl font-bold text-gray-900 dark:text-white">{competitor.overallScore}</span>
-            <div className={`flex items-center gap-1 text-sm ${competitor.trend >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {competitor.trend > 0 ? <ArrowUp size={12} /> : competitor.trend < 0 ? <ArrowDown size={12} /> : <Minus size={12} />}
-              <span>{Math.abs(competitor.trend)}%</span>
-            </div>
-          </div>
-        </div>
-        <Badge variant="info" size="sm">{competitor.mentions} mentions</Badge>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div className="text-center p-2 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-          <p className="text-sm font-medium text-gray-900 dark:text-white">{competitor.engines.chatgpt}</p>
-          <p className="text-xs text-gray-600 dark:text-gray-400">ChatGPT</p>
-        </div>
-        <div className="text-center p-2 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-          <p className="text-sm font-medium text-gray-900 dark:text-white">{competitor.engines.claude}</p>
-          <p className="text-xs text-gray-600 dark:text-gray-400">Claude</p>
-        </div>
-        <div className="text-center p-2 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-          <p className="text-sm font-medium text-gray-900 dark:text-white">{competitor.engines.gemini}</p>
-          <p className="text-xs text-gray-600 dark:text-gray-400">Gemini</p>
-        </div>
-        <div className="text-center p-2 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-          <p className="text-sm font-medium text-gray-900 dark:text-white">{competitor.engines.perplexity}</p>
-          <p className="text-xs text-gray-600 dark:text-gray-400">Perplexity</p>
-        </div>
-      </div>
-    </Card>
-  );
-
-  const ContentGapCard: React.FC<{ gap: ContentGap }> = ({ gap }) => (
-    <Card hover className="group">
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex-1">
-          <div className="flex items-center gap-2 mb-2">
-            <h4 className="font-medium text-gray-900 dark:text-white">{gap.category}</h4>
-            <Badge 
-              variant={gap.severity === 'critical' ? 'error' : gap.severity === 'important' ? 'warning' : 'info'} 
-              size="sm"
-            >
-              {gap.severity}
-            </Badge>
-          </div>
-          <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">{gap.description}</p>
-          <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-500">
-            <span>Impact: +{gap.impact}% visibility</span>
-            <span>Effort: {gap.effort}</span>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Badge 
-            variant={gap.status === 'completed' ? 'success' : gap.status === 'in-progress' ? 'warning' : 'info'} 
-            size="sm"
-          >
-            {gap.status.replace('-', ' ')}
-          </Badge>
-        </div>
-      </div>
-      {gap.status === 'open' && (
-        <Button variant="primary" size="sm" className="w-full">
-          Fix Gap
-        </Button>
-      )}
-    </Card>
-  );
-
-  const renderReportsContent = () => {
-    switch (activeReportTab) {
-      case 'strengths':
-        return (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <Card className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 border-green-200 dark:border-green-800">
-                <div className="flex items-center gap-3 mb-3">
-                  <CheckCircle className="text-green-600" size={24} />
-                  <h3 className="font-semibold text-green-900 dark:text-green-100">High Citation Quality</h3>
-                </div>
-                <p className="text-sm text-green-800 dark:text-green-200 mb-3">
-                  Your business is cited by 23 high-authority domains across AI engines.
-                </p>
-                <Button variant="secondary" size="sm">Leverage This</Button>
-              </Card>
-
-              <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border-blue-200 dark:border-blue-800">
-                <div className="flex items-center gap-3 mb-3">
-                  <Target className="text-blue-600" size={24} />
-                  <h3 className="font-semibold text-blue-900 dark:text-blue-100">Strong Local Intent</h3>
-                </div>
-                <p className="text-sm text-blue-800 dark:text-blue-200 mb-3">
-                  85% visibility for high-intent local queries in your category.
-                </p>
-                <Button variant="secondary" size="sm">Expand Reach</Button>
-              </Card>
-
-              <Card className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 border-purple-200 dark:border-purple-800">
-                <div className="flex items-center gap-3 mb-3">
-                  <Sparkles className="text-purple-600" size={24} />
-                  <h3 className="font-semibold text-purple-900 dark:text-purple-100">AI-Optimized Content</h3>
-                </div>
-                <p className="text-sm text-purple-800 dark:text-purple-200 mb-3">
-                  Your content structure is well-optimized for AI understanding.
-                </p>
-                <Button variant="secondary" size="sm">Optimize More</Button>
-              </Card>
-            </div>
-          </div>
-        );
-
-      case 'gaps':
-        return (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {mockContentGaps.map(gap => (
-                <ContentGapCard key={gap.id} gap={gap} />
-              ))}
-            </div>
-          </div>
-        );
-
-      case 'recommendations':
-        return (
-          <div className="space-y-6">
-            <Card>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Priority Recommendations</h3>
-              <div className="space-y-4">
-                <div className="flex items-start gap-4 p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
-                  <AlertTriangle className="text-red-600 mt-1" size={20} />
-                  <div className="flex-1">
-                    <h4 className="font-medium text-red-900 dark:text-red-100 mb-1">Critical: Fix NAP Inconsistencies</h4>
-                    <p className="text-sm text-red-800 dark:text-red-200 mb-2">
-                      Address variations detected across AI engines. Estimated impact: +25% visibility.
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="error" size="sm">High Priority</Badge>
-                      <Badge variant="success" size="sm">Quick Win</Badge>
-                    </div>
-                  </div>
-                  <Button variant="primary" size="sm">Fix Now</Button>
-                </div>
-
-                <div className="flex items-start gap-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
-                  <Target className="text-yellow-600 mt-1" size={20} />
-                  <div className="flex-1">
-                    <h4 className="font-medium text-yellow-900 dark:text-yellow-100 mb-1">Expand Service Descriptions</h4>
-                    <p className="text-sm text-yellow-800 dark:text-yellow-200 mb-2">
-                      Add detailed descriptions for cosmetic procedures. Estimated impact: +18% visibility.
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="warning" size="sm">Medium Priority</Badge>
-                      <Badge variant="info" size="sm">2-3 weeks</Badge>
-                    </div>
-                  </div>
-                  <Button variant="secondary" size="sm">Plan</Button>
-                </div>
-
-                <div className="flex items-start gap-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-                  <Zap className="text-blue-600 mt-1" size={20} />
-                  <div className="flex-1">
-                    <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-1">Optimize for Perplexity</h4>
-                    <p className="text-sm text-blue-800 dark:text-blue-200 mb-2">
-                      Improve structured data for better Perplexity visibility. Estimated impact: +15% visibility.
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="info" size="sm">Low Priority</Badge>
-                      <Badge variant="warning" size="sm">Technical</Badge>
-                    </div>
-                  </div>
-                  <Button variant="secondary" size="sm">Schedule</Button>
-                </div>
-              </div>
-            </Card>
-          </div>
-        );
-
-      case 'implementation':
-        return (
-          <div className="space-y-6">
-            <Card>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">30-60-90 Day Roadmap</h3>
-              
-              <div className="space-y-8">
-                <div>
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-8 h-8 bg-gradient-to-r from-green-500 to-green-600 rounded-full flex items-center justify-center text-white font-bold text-sm">30</div>
-                    <h4 className="text-lg font-semibold text-gray-900 dark:text-white">First 30 Days - Quick Wins</h4>
-                  </div>
-                  <div className="ml-11 space-y-3">
-                    <div className="flex items-center gap-3 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
-                      <CheckCircle className="text-green-600" size={16} />
-                      <span className="text-sm text-gray-900 dark:text-white">Fix NAP inconsistencies across all platforms</span>
-                      <Badge variant="success" size="sm">Completed</Badge>
-                    </div>
-                    <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                      <div className="w-4 h-4 border-2 border-gray-400 rounded-full"></div>
-                      <span className="text-sm text-gray-900 dark:text-white">Update business hours for holiday season</span>
-                      <Badge variant="warning" size="sm">In Progress</Badge>
-                    </div>
-                    <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                      <div className="w-4 h-4 border-2 border-gray-400 rounded-full"></div>
-                      <span className="text-sm text-gray-900 dark:text-white">Optimize Google Business Profile description</span>
-                      <Badge variant="info" size="sm">Planned</Badge>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white font-bold text-sm">60</div>
-                    <h4 className="text-lg font-semibold text-gray-900 dark:text-white">Next 30 Days - Content Enhancement</h4>
-                  </div>
-                  <div className="ml-11 space-y-3">
-                    <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                      <div className="w-4 h-4 border-2 border-gray-400 rounded-full"></div>
-                      <span className="text-sm text-gray-900 dark:text-white">Create detailed service descriptions</span>
-                      <Badge variant="info" size="sm">Planned</Badge>
-                    </div>
-                    <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                      <div className="w-4 h-4 border-2 border-gray-400 rounded-full"></div>
-                      <span className="text-sm text-gray-900 dark:text-white">Implement structured data markup</span>
-                      <Badge variant="info" size="sm">Planned</Badge>
-                    </div>
-                    <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                      <div className="w-4 h-4 border-2 border-gray-400 rounded-full"></div>
-                      <span className="text-sm text-gray-900 dark:text-white">Launch review response automation</span>
-                      <Badge variant="info" size="sm">Planned</Badge>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-sm">90</div>
-                    <h4 className="text-lg font-semibold text-gray-900 dark:text-white">Long-term - Advanced Optimization</h4>
-                  </div>
-                  <div className="ml-11 space-y-3">
-                    <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                      <div className="w-4 h-4 border-2 border-gray-400 rounded-full"></div>
-                      <span className="text-sm text-gray-900 dark:text-white">AI-specific content optimization</span>
-                      <Badge variant="info" size="sm">Planned</Badge>
-                    </div>
-                    <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                      <div className="w-4 h-4 border-2 border-gray-400 rounded-full"></div>
-                      <span className="text-sm text-gray-900 dark:text-white">Competitive intelligence automation</span>
-                      <Badge variant="info" size="sm">Planned</Badge>
-                    </div>
-                    <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                      <div className="w-4 h-4 border-2 border-gray-400 rounded-full"></div>
-                      <span className="text-sm text-gray-900 dark:text-white">Advanced citation building campaign</span>
-                      <Badge variant="info" size="sm">Planned</Badge>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </Card>
-          </div>
-        );
-
-      case 'citations':
-        return (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Citation Sources by Engine</h3>
-                <div className="space-y-4">
-                  {mockAIEngines.map(engine => (
-                    <div key={engine.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <span className="text-lg">{engine.logo}</span>
-                        <span className="font-medium text-gray-900 dark:text-white">{engine.name}</span>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-bold text-gray-900 dark:text-white">{engine.citations}</p>
-                        <p className="text-xs text-gray-600 dark:text-gray-400">citations</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-
-              <Card>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Top Citation Domains</h3>
-                <div className="space-y-3">
-                  {[
-                    { domain: 'healthgrades.com', citations: 8, authority: 92 },
-                    { domain: 'yelp.com', citations: 6, authority: 89 },
-                    { domain: 'google.com', citations: 12, authority: 100 },
-                    { domain: 'webmd.com', citations: 4, authority: 85 },
-                    { domain: 'zocdoc.com', citations: 5, authority: 78 }
-                  ].map((source, index) => (
-                    <div key={index} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                      <div>
-                        <p className="font-medium text-gray-900 dark:text-white">{source.domain}</p>
-                        <p className="text-xs text-gray-600 dark:text-gray-400">Authority: {source.authority}</p>
-                      </div>
-                      <Badge variant="info" size="sm">{source.citations} citations</Badge>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            </div>
-          </div>
-        );
-
-      case 'scores':
-        return (
-          <div className="space-y-6">
-            <Card>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Detailed AI Engine Scoring</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-gray-200 dark:border-gray-700">
-                      <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-white">Engine</th>
-                      <th className="text-center py-3 px-4 font-medium text-gray-900 dark:text-white">Overall Score</th>
-                      <th className="text-center py-3 px-4 font-medium text-gray-900 dark:text-white">Accuracy</th>
-                      <th className="text-center py-3 px-4 font-medium text-gray-900 dark:text-white">Completeness</th>
-                      <th className="text-center py-3 px-4 font-medium text-gray-900 dark:text-white">Recency</th>
-                      <th className="text-center py-3 px-4 font-medium text-gray-900 dark:text-white">Trend</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                    {mockAIEngines.map(engine => (
-                      <tr key={engine.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-3">
-                            <span className="text-lg">{engine.logo}</span>
-                            <span className="font-medium text-gray-900 dark:text-white">{engine.name}</span>
-                          </div>
-                        </td>
-                        <td className="py-3 px-4 text-center">
-                          <span className="text-xl font-bold text-gray-900 dark:text-white">{engine.visibilityScore}</span>
-                        </td>
-                        <td className="py-3 px-4 text-center">
-                          <span className="text-gray-900 dark:text-white">{Math.floor(engine.visibilityScore * 0.9)}</span>
-                        </td>
-                        <td className="py-3 px-4 text-center">
-                          <span className="text-gray-900 dark:text-white">{Math.floor(engine.visibilityScore * 1.1)}</span>
-                        </td>
-                        <td className="py-3 px-4 text-center">
-                          <span className="text-gray-900 dark:text-white">{Math.floor(engine.visibilityScore * 0.95)}</span>
-                        </td>
-                        <td className="py-3 px-4 text-center">
-                          <div className={`flex items-center justify-center gap-1 ${engine.trend >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            {engine.trend > 0 ? <ArrowUp size={14} /> : engine.trend < 0 ? <ArrowDown size={14} /> : <Minus size={14} />}
-                            <span>{Math.abs(engine.trend)}%</span>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          </div>
-        );
-
-      default:
-        return (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Recent Achievements</h3>
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
-                    <CheckCircle className="text-green-600" size={20} />
-                    <div>
-                      <p className="font-medium text-green-900 dark:text-green-100">ChatGPT Visibility +12%</p>
-                      <p className="text-sm text-green-800 dark:text-green-200">Improved ranking for "dermatologist near me"</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                    <Target className="text-blue-600" size={20} />
-                    <div>
-                      <p className="font-medium text-blue-900 dark:text-blue-100">New Citation Source</p>
-                      <p className="text-sm text-blue-800 dark:text-blue-200">Added to Healthgrades directory</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
-                    <Sparkles className="text-purple-600" size={20} />
-                    <div>
-                      <p className="font-medium text-purple-900 dark:text-purple-100">Perplexity Optimization</p>
-                      <p className="text-sm text-purple-800 dark:text-purple-200">Structured data implementation complete</p>
-                    </div>
-                  </div>
-                </div>
-              </Card>
-
-              <Card>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Priority Actions</h3>
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
-                    <AlertTriangle className="text-red-600" size={20} />
-                    <div className="flex-1">
-                      <p className="font-medium text-red-900 dark:text-red-100">Fix NAP Inconsistency</p>
-                      <p className="text-sm text-red-800 dark:text-red-200">Critical impact on AI visibility</p>
-                    </div>
-                    <Button variant="primary" size="sm">Fix</Button>
-                  </div>
-                  <div className="flex items-center gap-3 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
-                    <Target className="text-yellow-600" size={20} />
-                    <div className="flex-1">
-                      <p className="font-medium text-yellow-900 dark:text-yellow-100">Expand Service Descriptions</p>
-                      <p className="text-sm text-yellow-800 dark:text-yellow-200">Improve content completeness</p>
-                    </div>
-                    <Button variant="secondary" size="sm">Plan</Button>
-                  </div>
-                </div>
-              </Card>
-            </div>
-          </div>
-        );
+      // Load most recent report by default
+      if (reportsData.length > 0) {
+        const mostRecentReport = reportsData[0];
+        setSelectedReportId(mostRecentReport.id);
+        await loadReportDetails(mostRecentReport.id);
+      }
+    } catch (error) {
+      console.error('Error loading AI Visibility data:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
+  const loadReportDetails = async (reportId: string) => {
+    try {
+      const reportDetails = await AIVisibilityMockService.getReportById(reportId, organizationId);
+      setPlatformScores(reportDetails.platformScores);
+      setAchievements(reportDetails.achievements);
+      setPriorityActions(reportDetails.priorityActions);
+    } catch (error) {
+      console.error('Error loading report details:', error);
+    }
+  };
+
+  const toggleActionExpanded = (actionId: string) => {
+    const newExpanded = new Set(expandedActions);
+    if (newExpanded.has(actionId)) {
+      newExpanded.delete(actionId);
+    } else {
+      newExpanded.add(actionId);
+    }
+    setExpandedActions(newExpanded);
+  };
+
+  const toggleCompetitorDisabled = async (competitorId: string) => {
+    setCompetitors(competitors.map(c => 
+      c.id === competitorId 
+        ? { ...c, is_user_disabled: !c.is_user_disabled }
+        : c
+    ));
+  };
+
+  const currentReport = reports.find(r => r.id === selectedReportId);
+  const activeCompetitors = competitors.filter(c => !c.is_user_disabled);
+  const activeQueries = queries.filter(q => q.is_active);
+
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case 'critical': return 'text-red-600 dark:text-red-400';
+      case 'high': return 'text-orange-600 dark:text-orange-400';
+      case 'medium': return 'text-yellow-600 dark:text-yellow-400';
+      default: return 'text-gray-600 dark:text-gray-400';
+    }
+  };
+
+  const getPlatformIcon = (platform: string) => {
+    switch (platform) {
+      case 'chatgpt': return '🤖';
+      case 'claude': return '🧠';
+      case 'gemini': return '💎';
+      case 'perplexity': return '🔍';
+      default: return '🤖';
+    }
+  };
+
+  const getPlatformColor = (platform: string) => {
+    switch (platform) {
+      case 'chatgpt': return 'from-green-500 to-green-600';
+      case 'claude': return 'from-blue-500 to-blue-600';
+      case 'gemini': return 'from-orange-500 to-orange-600';
+      case 'perplexity': return 'from-purple-500 to-purple-600';
+      default: return 'from-gray-500 to-gray-600';
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#f45a4e] mx-auto mb-4"></div>
+          <p className="text-gray-600 dark:text-gray-400">Loading AI Visibility data...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="space-y-6">
+      {/* Header with Report Selector */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
             AI Visibility
           </h1>
           <p className="text-gray-600 dark:text-gray-400 mt-1">
-            Track your visibility across AI engines and optimize for the future of search
+            Automated monthly reports tracking your visibility across AI platforms
           </p>
         </div>
-        <div className="flex items-center gap-3">
+
+        {/* Month Selector */}
+        <div className="relative">
           <select
-            value={timePeriod}
-            onChange={(e) => setTimePeriod(e.target.value as any)}
-            className="px-3 py-2 bg-white/50 dark:bg-black/30 backdrop-blur-sm border border-white/30 dark:border-white/20 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#f45a4e] focus:border-transparent"
+            value={selectedReportId || ''}
+            onChange={(e) => {
+              setSelectedReportId(e.target.value);
+              loadReportDetails(e.target.value);
+            }}
+            className="appearance-none px-4 py-2 pr-10 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#f45a4e] cursor-pointer"
           >
-            <option value="7d">Last 7 days</option>
-            <option value="30d">Last 30 days</option>
-            <option value="90d">Last 90 days</option>
-            <option value="custom">Custom range</option>
+            {reports.map((report) => {
+              const date = new Date(report.report_month);
+              const monthName = date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+              return (
+                <option key={report.id} value={report.id}>
+                  {monthName} Report
+                </option>
+              );
+            })}
           </select>
-          <Button variant="secondary">
-            <Download size={16} />
-            Generate Report
-          </Button>
-          <Button>
-            <Zap size={16} />
-            Run Full Scan
-          </Button>
+          <Calendar size={18} className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" />
         </div>
       </div>
 
-      {/* Overall AI Visibility Score */}
+      {/* Overall Score Card */}
       <Card glow className="text-center py-8 bg-gradient-to-br from-white via-blue-50/30 to-purple-50/30 dark:from-gray-900 dark:via-blue-900/10 dark:to-purple-900/10">
         <div className="inline-flex p-6 bg-gradient-to-r from-[#667eea] to-[#764ba2] rounded-full mb-4">
           <Brain size={32} className="text-white" />
         </div>
-        <h2 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">{overallVisibilityScore}</h2>
+        <h2 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
+          {currentReport?.overall_score || 0}
+        </h2>
         <p className="text-lg text-gray-600 dark:text-gray-400 mb-2">Overall AI Visibility Score</p>
-        <div className={`flex items-center justify-center gap-2 text-lg ${overallTrend >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-          {overallTrend > 0 ? <ArrowUp size={20} /> : overallTrend < 0 ? <ArrowDown size={20} /> : <Minus size={20} />}
-          <span>{Math.abs(overallTrend)}% from last period</span>
+        <div className="flex items-center justify-center gap-2 text-lg text-green-600">
+          <TrendingUp size={20} />
+          <span>+8 points from last month</span>
         </div>
       </Card>
 
-      {/* Main Dashboard Widgets */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-        {/* AI Visibility Trend */}
-        <Card className="xl:col-span-2">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">AI Visibility Trends</h3>
-            <Button variant="ghost" size="sm">
-              <Eye size={16} />
-              View Details
-            </Button>
-          </div>
-          <div className="h-64 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 rounded-lg flex items-center justify-center">
-            <div className="text-center">
-              <Activity size={48} className="mx-auto text-gray-400 mb-4" />
-              <p className="text-gray-600 dark:text-gray-400">Interactive trend chart</p>
-              <p className="text-sm text-gray-500 dark:text-gray-500 mt-1">Showing visibility across all AI engines</p>
-            </div>
-          </div>
-        </Card>
-
-        {/* Citation Share */}
-        <Card>
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Citation Share</h3>
-            <Button variant="ghost" size="sm">
-              <PieChart size={16} />
-              Details
-            </Button>
-          </div>
-          <div className="h-64 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 rounded-lg flex items-center justify-center">
-            <div className="text-center">
-              <PieChart size={48} className="mx-auto text-gray-400 mb-4" />
-              <p className="text-gray-600 dark:text-gray-400">Citation distribution</p>
-              <p className="text-sm text-gray-500 dark:text-gray-500 mt-1">vs top 3 competitors</p>
-            </div>
-          </div>
-        </Card>
-      </div>
-
-      {/* AI Engine Performance Cards */}
+      {/* Platform Scores */}
       <div>
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">AI Engine Performance</h2>
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">AI Platform Performance</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {mockAIEngines.map(engine => (
-            <AIEngineCard key={engine.id} engine={engine} />
+          {platformScores.map((score) => (
+            <Card key={score.platform} hover className="group cursor-pointer">
+              <div className="text-center">
+                <div className={`inline-flex p-4 rounded-full bg-gradient-to-r ${getPlatformColor(score.platform)} mb-4 transition-transform duration-300 group-hover:scale-110`}>
+                  <span className="text-2xl">{getPlatformIcon(score.platform)}</span>
+                </div>
+                <h3 className="font-semibold text-gray-900 dark:text-white mb-2 capitalize">
+                  {score.platform}
+                </h3>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-center gap-2">
+                    <span className="text-2xl font-bold text-gray-900 dark:text-white">
+                      {score.score}
+                    </span>
+                    {score.score > 0 && (
+                      <Badge variant="success" size="sm">Active</Badge>
+                    )}
+                  </div>
+                  {score.mention_count > 0 ? (
+                    <>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">
+                        {score.mention_count} mentions
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-500">
+                        Avg rank: {score.ranking_position?.toFixed(1)}
+                      </p>
+                    </>
+                  ) : (
+                    <Badge variant="error" size="sm">Not Detected</Badge>
+                  )}
+                </div>
+              </div>
+            </Card>
           ))}
         </div>
       </div>
 
-      {/* Tabbed Content */}
-      <div>
-        <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
-          <nav className="flex space-x-8">
-            {[
-              { id: 'reports', label: 'Reports', icon: BarChart3 },
-              { id: 'queries', label: 'Query Sets', icon: Search },
-              { id: 'competitors', label: 'Competitors', icon: Users },
-              { id: 'settings', label: 'Settings', icon: Settings }
-            ].map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center gap-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                  activeTab === tab.id
-                    ? 'border-[#f45a4e] text-[#f45a4e]'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
-                }`}
-              >
-                <tab.icon size={16} />
-                {tab.label}
-              </button>
-            ))}
-          </nav>
+      {/* Trends Chart */}
+      <Card>
+        <div className="p-6">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+            Visibility Trends
+          </h3>
+          
+          {/* Line Chart */}
+          <div className="relative h-64 mb-4">
+            {/* Y-axis labels */}
+            <div className="absolute left-0 top-0 bottom-8 w-8 flex flex-col justify-between text-xs text-gray-500 dark:text-gray-500">
+              <span>100</span>
+              <span>75</span>
+              <span>50</span>
+              <span>25</span>
+              <span>0</span>
+            </div>
+
+            {/* Chart area */}
+            <div className="ml-10 mr-4 h-full relative pb-6">
+              {/* Grid lines */}
+              <div className="absolute inset-0 flex flex-col justify-between">
+                {[0, 1, 2, 3, 4].map((i) => (
+                  <div key={i} className="border-t border-gray-200 dark:border-gray-700"></div>
+                ))}
+              </div>
+
+              {/* SVG for lines */}
+              <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                {/* Overall Score Line (thicker, on top) */}
+                <polyline
+                  points={trendData.map((point, index) => {
+                    const x = (index / (trendData.length - 1)) * 100;
+                    const y = 100 - point.overall_score;
+                    return `${x},${y}`;
+                  }).join(' ')}
+                  fill="none"
+                  stroke="#f45a4e"
+                  strokeWidth="1"
+                  className="drop-shadow-lg"
+                />
+
+                {/* ChatGPT Line */}
+                <polyline
+                  points={trendData.map((point, index) => {
+                    const x = (index / (trendData.length - 1)) * 100;
+                    const y = 100 - point.chatgpt_score;
+                    return `${x},${y}`;
+                  }).join(' ')}
+                  fill="none"
+                  stroke="#22c55e"
+                  strokeWidth="0.6"
+                />
+
+                {/* Claude Line */}
+                <polyline
+                  points={trendData.map((point, index) => {
+                    const x = (index / (trendData.length - 1)) * 100;
+                    const y = 100 - point.claude_score;
+                    return `${x},${y}`;
+                  }).join(' ')}
+                  fill="none"
+                  stroke="#3b82f6"
+                  strokeWidth="0.6"
+                />
+
+                {/* Gemini Line */}
+                <polyline
+                  points={trendData.map((point, index) => {
+                    const x = (index / (trendData.length - 1)) * 100;
+                    const y = 100 - point.gemini_score;
+                    return `${x},${y}`;
+                  }).join(' ')}
+                  fill="none"
+                  stroke="#f97316"
+                  strokeWidth="0.6"
+                />
+
+                {/* Perplexity Line */}
+                <polyline
+                  points={trendData.map((point, index) => {
+                    const x = (index / (trendData.length - 1)) * 100;
+                    const y = 100 - point.perplexity_score;
+                    return `${x},${y}`;
+                  }).join(' ')}
+                  fill="none"
+                  stroke="#a855f7"
+                  strokeWidth="0.6"
+                />
+
+                {/* Data points for overall score */}
+                {trendData.map((point, index) => {
+                  const x = (index / (trendData.length - 1)) * 100;
+                  const y = 100 - point.overall_score;
+                  return (
+                    <circle
+                      key={`overall-${index}`}
+                      cx={x}
+                      cy={y}
+                      r="1.2"
+                      fill="#f45a4e"
+                      className="drop-shadow"
+                    />
+                  );
+                })}
+              </svg>
+
+              {/* X-axis labels */}
+              <div className="absolute -bottom-6 left-0 right-0 flex justify-between text-xs text-gray-600 dark:text-gray-400">
+                {trendData.map((point, index) => (
+                  <span key={index} className="transform -rotate-0">
+                    {point.month}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+          
+          {/* Platform Legend */}
+          <div className="flex flex-wrap gap-4 mt-8 pt-4 border-t border-gray-200 dark:border-gray-700">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-0.5 bg-[#f45a4e]"></div>
+              <span className="text-sm font-semibold text-gray-900 dark:text-white">Overall</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-0.5 bg-green-500"></div>
+              <span className="text-sm text-gray-600 dark:text-gray-400">ChatGPT</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-0.5 bg-blue-500"></div>
+              <span className="text-sm text-gray-600 dark:text-gray-400">Claude</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-0.5 bg-orange-500"></div>
+              <span className="text-sm text-gray-600 dark:text-gray-400">Gemini</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-0.5 bg-purple-500"></div>
+              <span className="text-sm text-gray-600 dark:text-gray-400">Perplexity</span>
+            </div>
+          </div>
         </div>
+      </Card>
 
-        {/* Tab Content */}
-        {activeTab === 'reports' && (
-          <div className="space-y-6">
-            {/* Report Sub-tabs */}
-            <div className="flex flex-wrap gap-2">
-              {[
-                { id: 'all', label: 'All' },
-                { id: 'strengths', label: 'Strengths' },
-                { id: 'gaps', label: 'Content Gaps' },
-                { id: 'recommendations', label: 'Recommendations' },
-                { id: 'implementation', label: 'Implementation' },
-                { id: 'citations', label: 'LLM Citations' },
-                { id: 'scores', label: 'AI Scores' }
-              ].map(tab => (
-                <Button
-                  key={tab.id}
-                  variant={activeReportTab === tab.id ? 'primary' : 'ghost'}
-                  size="sm"
-                  onClick={() => setActiveReportTab(tab.id as any)}
-                >
-                  {tab.label}
-                </Button>
-              ))}
-            </div>
-
-            {renderReportsContent()}
+      {/* Recent Achievements */}
+      <Card>
+        <div className="p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Award size={20} className="text-[#f45a4e]" />
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+              Recent Achievements
+            </h3>
           </div>
-        )}
-
-        {activeTab === 'queries' && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Query Performance</h3>
-              <div className="flex items-center gap-3">
-                <Button variant="secondary" size="sm">
-                  <Filter size={16} />
-                  Filter
-                </Button>
-                <Button size="sm">
-                  <Plus size={16} />
-                  Add Query Set
-                </Button>
+          <div className="space-y-3">
+            {achievements.map((achievement) => (
+              <div
+                key={achievement.id}
+                className="flex items-start gap-3 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg"
+              >
+                <Check size={20} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-gray-900 dark:text-white font-medium">
+                    {achievement.achievement_text}
+                  </p>
+                  {achievement.improvement_percentage && (
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                      +{achievement.improvement_percentage.toFixed(1)}% improvement
+                    </p>
+                  )}
+                </div>
+                <Badge variant="success" size="sm">
+                  {achievement.impact_level}
+                </Badge>
               </div>
-            </div>
-
-            <Card>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-gray-200 dark:border-gray-700">
-                      <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-white">Query</th>
-                      <th className="text-center py-3 px-4 font-medium text-gray-900 dark:text-white">Visibility</th>
-                      <th className="text-center py-3 px-4 font-medium text-gray-900 dark:text-white">Change</th>
-                      <th className="text-center py-3 px-4 font-medium text-gray-900 dark:text-white">AI Engine</th>
-                      <th className="text-center py-3 px-4 font-medium text-gray-900 dark:text-white">Intent</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                    {mockQueries.map(query => (
-                      <QueryRow key={query.id} query={query} />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
+            ))}
           </div>
-        )}
+        </div>
+      </Card>
 
-        {activeTab === 'competitors' && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Competitor Analysis</h3>
-              <Button size="sm">
-                <Plus size={16} />
-                Add Competitor
-              </Button>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-              {mockCompetitors.map(competitor => (
-                <CompetitorCard key={competitor.id} competitor={competitor} />
-              ))}
-            </div>
+      {/* Priority Actions */}
+      <Card>
+        <div className="p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Target size={20} className="text-[#f45a4e]" />
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+              Priority Actions
+            </h3>
           </div>
-        )}
-
-        {activeTab === 'settings' && (
-          <div className="space-y-6">
-            <Card>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">AI Engine Settings</h3>
-              <div className="space-y-4">
-                {mockAIEngines.map(engine => (
-                  <div key={engine.id} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <span className="text-lg">{engine.logo}</span>
-                      <div>
-                        <p className="font-medium text-gray-900 dark:text-white">{engine.name}</p>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">Last scan: {engine.lastUpdated}</p>
+          <div className="space-y-3">
+            {priorityActions.map((action) => (
+              <div
+                key={action.id}
+                className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden"
+              >
+                <div className="p-4 bg-white dark:bg-gray-800">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <AlertCircle size={18} className={getPriorityColor(action.priority)} />
+                        <h4 className="font-semibold text-gray-900 dark:text-white">
+                          {action.action_title}
+                        </h4>
+                        <Badge
+                          variant={action.priority === 'high' || action.priority === 'critical' ? 'error' : 'warning'}
+                          size="sm"
+                        >
+                          {action.priority}
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                        {action.action_description}
+                      </p>
+                      <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-500">
+                        <span>Impact: {action.estimated_impact}</span>
+                        <span>•</span>
+                        <span>Effort: {action.estimated_effort}</span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <select className="px-3 py-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded text-sm">
-                        <option>Daily</option>
-                        <option>Weekly</option>
-                        <option>Monthly</option>
-                      </select>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" defaultChecked className="sr-only peer" />
-                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#f45a4e]/20 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-[#f45a4e]"></div>
-                      </label>
+                    <Button
+                      variant={expandedActions.has(action.id) ? 'secondary' : 'primary'}
+                      size="sm"
+                      onClick={() => toggleActionExpanded(action.id)}
+                    >
+                      {expandedActions.has(action.id) ? (
+                        <>
+                          <ChevronUp size={16} className="mr-1" />
+                          Hide
+                        </>
+                      ) : (
+                        <>
+                          <ChevronDown size={16} className="mr-1" />
+                          Fix
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Expandable Instructions */}
+                {expandedActions.has(action.id) && action.fix_instructions && (
+                  <div className="p-4 bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700">
+                    <h5 className="font-semibold text-gray-900 dark:text-white mb-3">
+                      Implementation Guide:
+                    </h5>
+                    <div className="prose prose-sm dark:prose-invert max-w-none">
+                      {action.fix_instructions.split('\n').map((line, idx) => {
+                        if (line.startsWith('##')) {
+                          return (
+                            <h3 key={idx} className="text-base font-semibold text-gray-900 dark:text-white mt-4 mb-2">
+                              {line.replace('##', '').trim()}
+                            </h3>
+                          );
+                        }
+                        if (line.startsWith('**')) {
+                          return (
+                            <p key={idx} className="font-semibold text-gray-900 dark:text-white mt-2">
+                              {line.replace(/\*\*/g, '')}
+                            </p>
+                          );
+                        }
+                        if (line.startsWith('-')) {
+                          return (
+                            <li key={idx} className="text-gray-700 dark:text-gray-300 ml-4">
+                              {line.substring(1).trim()}
+                            </li>
+                          );
+                        }
+                        if (line.trim()) {
+                          return (
+                            <p key={idx} className="text-gray-700 dark:text-gray-300 mt-2">
+                              {line}
+                            </p>
+                          );
+                        }
+                        return null;
+                      })}
                     </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </Card>
+
+      {/* Query Sets and Competitors Tabs */}
+      <Card>
+        <div className="border-b border-gray-200 dark:border-gray-700">
+          <div className="flex gap-4 px-6 pt-6">
+            <button
+              onClick={() => setActiveTab('queries')}
+              className={`pb-3 px-1 border-b-2 font-medium transition-colors ${
+                activeTab === 'queries'
+                  ? 'border-[#f45a4e] text-[#f45a4e]'
+                  : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+              }`}
+            >
+              Query Sets ({activeQueries.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('competitors')}
+              className={`pb-3 px-1 border-b-2 font-medium transition-colors ${
+                activeTab === 'competitors'
+                  ? 'border-[#f45a4e] text-[#f45a4e]'
+                  : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+              }`}
+            >
+              Competitors ({activeCompetitors.length})
+            </button>
+          </div>
+        </div>
+
+        <div className="p-6">
+          {activeTab === 'queries' ? (
+            <div>
+              <div className="flex justify-between items-center mb-4">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  AI-generated queries used to analyze your visibility ({activeQueries.length}/10)
+                </p>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={activeQueries.length >= 10}
+                >
+                  <Plus size={16} className="mr-1" />
+                  Add Query
+                </Button>
+              </div>
+              <div className="space-y-2">
+                {activeQueries.map((query, index) => (
+                  <div
+                    key={query.id}
+                    className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-lg"
+                  >
+                    <div className="flex items-center gap-3 flex-1">
+                      <span className="text-xs font-medium text-gray-500 dark:text-gray-500 w-8">
+                        #{index + 1}
+                      </span>
+                      <span className="text-gray-900 dark:text-white">
+                        {query.query_text}
+                      </span>
+                      {query.is_auto_generated && (
+                        <Badge variant="info" size="sm">Auto</Badge>
+                      )}
+                    </div>
+                    <span className="text-xs text-gray-500 dark:text-gray-500">
+                      Used {query.times_used} times
+                    </span>
                   </div>
                 ))}
               </div>
-            </Card>
-          </div>
-        )}
-      </div>
+            </div>
+          ) : (
+            <div>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                Competitors detected across AI platforms
+              </p>
+              <div className="space-y-2">
+                {competitors.map((competitor) => (
+                  <div
+                    key={competitor.id}
+                    className={`flex items-center justify-between p-4 rounded-lg border ${
+                      competitor.is_user_disabled
+                        ? 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 opacity-50'
+                        : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'
+                    }`}
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3">
+                        <Users size={18} className="text-gray-400" />
+                        <div>
+                          <p className="font-medium text-gray-900 dark:text-white">
+                            {competitor.competitor_name}
+                          </p>
+                          {competitor.competitor_website && (
+                            <p className="text-sm text-gray-500 dark:text-gray-500">
+                              {competitor.competitor_website}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 mt-2">
+                        {competitor.detected_in_platforms.map((platform) => (
+                          <Badge key={platform} variant="info" size="sm">
+                            {platform}
+                          </Badge>
+                        ))}
+                        <span className="text-xs text-gray-500 dark:text-gray-500">
+                          • Detected {competitor.detection_count} times
+                        </span>
+                      </div>
+                    </div>
+                    <Button
+                      variant={competitor.is_user_disabled ? 'secondary' : 'ghost'}
+                      size="sm"
+                      onClick={() => toggleCompetitorDisabled(competitor.id)}
+                    >
+                      {competitor.is_user_disabled ? (
+                        <>
+                          <Check size={16} className="mr-1" />
+                          Enable
+                        </>
+                      ) : (
+                        <>
+                          <X size={16} className="mr-1" />
+                          Not a Competitor
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </Card>
     </div>
   );
 };

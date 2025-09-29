@@ -35,16 +35,10 @@ export interface ConnectionStatus {
 class GoogleAuthService {
   private clientId: string;
   private redirectUri: string;
-  private scope: string[];
 
   constructor() {
     this.clientId = GOOGLE_CLIENT_ID;
     this.redirectUri = REDIRECT_URI;
-    this.scope = [
-      'https://www.googleapis.com/auth/business.manage',
-      'https://www.googleapis.com/auth/userinfo.email',
-      'https://www.googleapis.com/auth/userinfo.profile'
-    ];
 
     if (!this.clientId) {
       throw new Error('Google Client ID not configured');
