@@ -1,5 +1,5 @@
 // src/components/layout/Sidebar.tsx
-// Updated to remove hardcoded role restrictions - let route protection handle access control
+// Updated to include Sample Data Manager menu item
 
 import {
   AlertTriangle,
@@ -68,13 +68,14 @@ const managementItems: NavItem[] = [
   { id: 'alerts', label: 'Alerts', icon: AlertTriangle, badge: '3', badgeVariant: 'error', allowedRoles: ['manager', 'admin'] }, // Keep manager/admin restriction
 ];
 
-// Settings items - keep admin restrictions for admin tools
+// Settings items - keep admin restrictions for admin tools, add Sample Data Manager
 const settingsItems: NavItem[] = [
   { id: 'settings', label: 'General', icon: Settings },
   { id: 'customers', label: 'Customers', icon: Users, allowedRoles: ['manager', 'admin'] },
   { id: 'users', label: 'Users', icon: UserCheck, requiredRole: 'admin' },
   { id: 'admin-setup', label: 'Database Setup', icon: Database, requiredRole: 'admin' },
   { id: 'db-check', label: 'Database Check', icon: Search, requiredRole: 'admin' },
+  { id: 'sample-data', label: 'Sample Data', icon: Database, requiredRole: 'admin', badge: 'New', badgeVariant: 'success' },
   { id: 'fix-profile', label: 'Fix Profile', icon: UserCheck, requiredRole: 'admin' },
   { id: 'onboarding', label: 'Onboarding', icon: UserPlus, badge: 'Step-by-step', badgeVariant: 'info', allowedRoles: ['manager', 'admin'] },
 ];

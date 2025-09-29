@@ -1,5 +1,5 @@
 // src/App.tsx
-// Fixed App.tsx with clean imports and customers route added
+// Fixed App.tsx with SampleDataManager route added
 
 import type { User } from '@supabase/supabase-js';
 import { useEffect, useState } from 'react';
@@ -25,6 +25,7 @@ import { Posts } from './components/pages/Posts';
 import { PremiumListings } from './components/pages/PremiumListings';
 import { Rankings } from './components/pages/Rankings';
 import { Reviews } from './components/pages/Reviews';
+import { SampleDataManager } from './components/pages/SampleDataManager';
 import { SettingsCustomers } from './components/pages/SettingsCustomers';
 import { SettingsGeneral } from './components/pages/SettingsGeneral';
 import { SettingsUsers } from './components/pages/SettingsUsers';
@@ -216,6 +217,9 @@ function App() {
         break;
       case 'onboarding':
         component = <Onboarding />;
+        break;
+      case 'sample-data':
+        component = <SampleDataManager />;
         break;
       default:
         component = <Dashboard />;

@@ -1,5 +1,5 @@
 // src/config/routes.ts
-// Updated route configuration with new access control definitions
+// Updated route configuration with sample-data route added
 
 import type { ProductName } from '../types/products';
 
@@ -17,7 +17,7 @@ export interface RouteConfig {
 
 /**
  * Route access control configuration
- * Updated based on new requirements
+ * Updated with sample-data route
  */
 export const ROUTE_CONFIG: Record<string, RouteConfig> = {
   // Public routes - no restrictions
@@ -154,6 +154,14 @@ export const ROUTE_CONFIG: Record<string, RouteConfig> = {
     label: 'Fix Profile',
     requiredRole: 'admin',
     description: 'Fix user profile issues'
+  },
+
+  // NEW: Sample Data Manager - Admin only
+  'sample-data': {
+    section: 'sample-data',
+    label: 'Sample Data',
+    requiredRole: 'admin',
+    description: 'Create and manage sample data for development and testing'
   },
 
   // Manager/Admin routes
