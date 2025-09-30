@@ -5,7 +5,7 @@ import { AlertCircle, Lock, Shield } from 'lucide-react';
 import React from 'react';
 import { useProductAccess } from '../../hooks/useProductAccess';
 import type { ProductName } from '../../types/products';
-import { ProductUpgradeModal } from '../modal/ProductUpgradeModal';
+import { ProductUpgradeModal } from '../modals/ProductUpgradeModal';
 import { Card } from '../ui/Card';
 
 type UserRole = 'user' | 'manager' | 'admin';

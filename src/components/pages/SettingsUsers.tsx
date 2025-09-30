@@ -1,93 +1,105 @@
 // src/components/pages/SettingsUsers.tsx
-// Updated to use real Supabase data via UserService with Edit User Modal integration
+// Enhanced Users page with status management and create user functionality
 
 import {
+  AlertTriangle,
   Ban,
+  CheckCircle,
+  Clock,
   Crown,
   Download,
   Edit,
   Eye,
-  Loader,
   LogIn,
+  RefreshCw,
   Search,
   Shield,
-  UserPlus
+  UserPlus,
+  XCircle
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
-import { ProfileWithOrganization, UserService } from '../../lib/userService';
-import { EditUserModal } from '../modal/EditUserModal';
+import { UserService, type ProfileWithOrganization } from '../../lib/userService';
+import { CreateUserModal } from '../modals/CreateUserModal';
+import { EditUserModal } from '../modals/EditUserModal';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 
-// Real user interface matching your database schema
-interface SystemUser extends ProfileWithOrganization {}
+type SystemUser = ProfileWithOrganization;
 
 export const SettingsUsers: React.FC = () => {
   const [users, setUsers] = useState<SystemUser[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'support' | 'reseller'>('all');
-  const [currentPage, setCurrentPage] = useState(1);
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [currentPage, setCurrentPage] = useState<number>(1);
   const [editingUser, setEditingUser] = useState<SystemUser | null>(null);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const usersPerPage = 20;
+  const [isEditModalOpen, setIsEditModalOpen] = useState<boolean>(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  // Fetch users from database
+  const usersPerPage = 10;
+
   useEffect(() => {
-    async function fetchUsers() {
-      try {
-        setLoading(true);
-        setError(null);
-        
-        const { data, error } = await UserService.getSystemUsers();
-        
-        if (error) {
-          console.error('Error fetching system users:', error);
-          setError('Failed to load system users. Please try again.');
-        } else {
-          setUsers(data || []);
-          console.log('Loaded system users:', data?.length || 0);
-        }
-      } catch (err) {
-        console.error('Unexpected error:', err);
-        setError('An unexpected error occurred while loading users.');
-      } finally {
-        setLoading(false);
-      }
-    }
-    
-    fetchUsers();
+    loadUsers();
   }, []);
 
-  // Filter users based on search and filters
+  const loadUsers = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const result = await UserService.getSystemUsers();
+      
+      if (result.error) {
+        console.error('Failed to load users:', result.error);
+        setError('Failed to load system users');
+      } else if (result.data) {
+        setUsers(result.data);
+        console.log('✅ Loaded users:', result.data.length);
+      }
+    } catch (err) {
+      console.error('Error loading users:', err);
+      setError('An error occurred while loading users');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRefresh = () => {
+    setCurrentPage(1);
+    loadUsers();
+  };
+
+  // Filter users based on search term
   const filteredUsers = users.filter(user => {
-    const fullName = `${user.first_name || ''} ${user.last_name || ''}`.trim();
-    const email = user.email || '';
-    const orgName = user.organization?.name || '';
+    const fullName = `${user.first_name || ''} ${user.last_name || ''}`.toLowerCase();
+    const email = (user.email || '').toLowerCase();
+    const orgName = (user.organization?.name || '').toLowerCase();
+    const search = searchTerm.toLowerCase();
     
-    const matchesSearch = fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         orgName.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesRole = roleFilter === 'all' || user.role === roleFilter;
-    
-    return matchesSearch && matchesRole;
+    return fullName.includes(search) || email.includes(search) || orgName.includes(search);
   });
 
+  // Pagination
   const totalPages = Math.ceil(filteredUsers.length / usersPerPage);
   const startIndex = (currentPage - 1) * usersPerPage;
   const paginatedUsers = filteredUsers.slice(startIndex, startIndex + usersPerPage);
 
-  const handleEditUser = async (user: SystemUser) => {
-    console.log('Edit system user:', user);
+  // Statistics
+  const adminCount = users.filter(u => u.role === 'admin').length;
+  const supportCount = users.filter(u => u.role === 'support').length;
+  const resellerCount = users.filter(u => u.role === 'reseller').length;
+  const activeCount = users.filter(u => u.status === 'active').length;
+  const suspendedCount = users.filter(u => u.status === 'suspended').length;
+
+  const handleEditUser = (user: SystemUser) => {
     setEditingUser(user);
     setIsEditModalOpen(true);
   };
 
   const handleUserUpdated = (updatedUser: SystemUser) => {
-    // Update the user in the local state
+    // Update the user in the list
     setUsers(prevUsers => 
       prevUsers.map(user => 
         user.id === updatedUser.id ? updatedUser : user
@@ -107,23 +119,57 @@ export const SettingsUsers: React.FC = () => {
   };
 
   const handleCreateUser = () => {
-    console.log('Create new admin/manager user');
-    // TODO: Implement create user functionality
+    setIsCreateModalOpen(true);
+  };
+
+  const handleUserCreated = (newUser: SystemUser) => {
+    // Add the new user to the list
+    setUsers(prevUsers => [newUser, ...prevUsers]);
+    setIsCreateModalOpen(false);
+    console.log('New user added to list:', newUser);
   };
 
   const handleSuspendUser = async (userId: string) => {
-    console.log('Suspend user:', userId);
-    // TODO: Implement suspend user functionality
+    try {
+      setActionLoading(userId);
+      
+      const user = users.find(u => u.id === userId);
+      const isCurrentlySuspended = user?.status === 'suspended';
+      
+      const result = isCurrentlySuspended 
+        ? await UserService.activateUser(userId)
+        : await UserService.suspendUser(userId);
+      
+      if (result.error) {
+        console.error('Failed to update user status:', result.error);
+        setError(`Failed to ${isCurrentlySuspended ? 'activate' : 'suspend'} user`);
+      } else if (result.data) {
+        // Update the user in the list
+        setUsers(prevUsers =>
+          prevUsers.map(user =>
+            user.id === userId ? result.data! : user
+          )
+        );
+        console.log(`✅ User ${isCurrentlySuspended ? 'activated' : 'suspended'}:`, result.data);
+      }
+    } catch (err) {
+      console.error('Error updating user status:', err);
+      setError('An error occurred while updating user status');
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const handleLoginAsUser = (user: SystemUser) => {
     console.log('Login as user:', user);
     // TODO: Implement login as user functionality
+    alert(`Login as ${user.first_name} ${user.last_name} - Feature coming soon!`);
   };
 
   const handleViewAuditLog = (user: SystemUser) => {
     console.log('View audit log for:', user);
     // TODO: Implement audit log functionality
+    alert(`Audit log for ${user.first_name} ${user.last_name} - Feature coming soon!`);
   };
 
   const getRoleBadge = (role: string) => {
@@ -158,67 +204,65 @@ export const SettingsUsers: React.FC = () => {
     }
   };
 
-  const formatUserName = (user: SystemUser): string => {
-    const firstName = user.first_name || '';
-    const lastName = user.last_name || '';
-    const fullName = `${firstName} ${lastName}`.trim();
-    return fullName || user.email || 'Unknown User';
-  };
-
-  const formatDate = (dateString: string): string => {
-    try {
-      return new Date(dateString).toLocaleDateString();
-    } catch {
-      return 'Unknown';
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'active':
+        return (
+          <Badge variant="success" size="sm" className="flex items-center gap-1">
+            <CheckCircle size={12} />
+            Active
+          </Badge>
+        );
+      case 'suspended':
+        return (
+          <Badge variant="error" size="sm" className="flex items-center gap-1">
+            <XCircle size={12} />
+            Suspended
+          </Badge>
+        );
+      case 'pending':
+        return (
+          <Badge variant="warning" size="sm" className="flex items-center gap-1">
+            <Clock size={12} />
+            Pending
+          </Badge>
+        );
+      default:
+        return (
+          <Badge variant="info" size="sm">
+            {status}
+          </Badge>
+        );
     }
   };
 
-  // Statistics from real data
-  const adminCount = users.filter(u => u.role === 'admin').length;
-  const supportCount = users.filter(u => u.role === 'support').length;
-  const resellerCount = users.filter(u => u.role === 'reseller').length;
+  const formatUserName = (user: SystemUser): string => {
+    const firstName = user.first_name || '';
+    const lastName = user.last_name || '';
+    return `${firstName} ${lastName}`.trim() || 'Unnamed User';
+  };
+
+  const formatDate = (dateString: string): string => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-center py-12">
-          <div className="text-center">
-            <Loader className="animate-spin h-8 w-8 text-blue-600 mx-auto mb-4" />
-            <p className="text-gray-600 dark:text-gray-400">Loading system users...</p>
-          </div>
+      <div className="p-6">
+        <div className="flex items-center justify-center h-64">
+          <RefreshCw size={24} className="animate-spin text-gray-400" />
+          <span className="ml-2 text-gray-600 dark:text-gray-400">Loading system users...</span>
         </div>
       </div>
     );
   }
 
-  if (error) {
-    return (
-      <div className="space-y-6">
-        <Card className="p-6">
-          <div className="text-center">
-            <div className="p-3 bg-red-100 dark:bg-red-900/30 rounded-full w-fit mx-auto mb-4">
-              <Ban className="h-6 w-6 text-red-600 dark:text-red-400" />
-            </div>
-            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-              Error Loading Users
-            </h3>
-            <p className="text-gray-600 dark:text-gray-400 mb-4">
-              {error}
-            </p>
-            <Button 
-              variant="primary" 
-              onClick={() => window.location.reload()}
-            >
-              Try Again
-            </Button>
-          </div>
-        </Card>
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-6">
+    <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -228,6 +272,10 @@ export const SettingsUsers: React.FC = () => {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <Button variant="secondary" size="sm" onClick={handleRefresh}>
+            <RefreshCw size={16} className="mr-2" />
+            Refresh
+          </Button>
           <Button variant="secondary" size="sm">
             <Download size={16} className="mr-2" />
             Export
@@ -239,13 +287,41 @@ export const SettingsUsers: React.FC = () => {
         </div>
       </div>
 
+      {/* Error Message */}
+      {error && (
+        <Card className="p-4 border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20">
+          <div className="flex items-center gap-2 text-red-800 dark:text-red-200">
+            <AlertTriangle size={16} />
+            <span>{error}</span>
+          </div>
+        </Card>
+      )}
+
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card className="p-4">
           <div className="text-2xl font-bold text-gray-900 dark:text-white">
             {users.length}
           </div>
           <div className="text-sm text-gray-600 dark:text-gray-400">Total System Users</div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-2xl font-bold text-green-600">
+            {activeCount}
+          </div>
+          <div className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-1">
+            <CheckCircle size={14} />
+            Active
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-2xl font-bold text-red-600">
+            {suspendedCount}
+          </div>
+          <div className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-1">
+            <XCircle size={14} />
+            Suspended
+          </div>
         </Card>
         <Card className="p-4">
           <div className="text-2xl font-bold text-gray-900 dark:text-white">
@@ -258,107 +334,101 @@ export const SettingsUsers: React.FC = () => {
         </Card>
         <Card className="p-4">
           <div className="text-2xl font-bold text-gray-900 dark:text-white">
-            {supportCount}
+            {supportCount + resellerCount}
           </div>
           <div className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-1">
             <Shield size={14} />
-            Support Users
-          </div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-2xl font-bold text-gray-900 dark:text-white">
-            {resellerCount}
-          </div>
-          <div className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-1">
-            <Shield size={14} />
-            Reseller Users
+            Support & Resellers
           </div>
         </Card>
       </div>
 
-      {/* Filters and Search */}
-      <Card>
-        <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1 relative">
-              <Search size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search system users..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-              />
-            </div>
-            <div className="flex gap-2">
-              <select
-                value={roleFilter}
-                onChange={(e) => setRoleFilter(e.target.value as 'all' | 'admin' | 'support' | 'reseller')}
-                className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-              >
-                <option value="all">All Roles</option>
-                <option value="admin">Admin</option>
-                <option value="support">Support</option>
-                <option value="reseller">Reseller</option>
-              </select>
-            </div>
+      {/* Search and Filters */}
+      <Card className="p-4">
+        <div className="flex items-center gap-4">
+          <div className="relative flex-1">
+            <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search by name, email, or organization..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+          <div className="text-sm text-gray-600 dark:text-gray-400">
+            {filteredUsers.length} of {users.length} users
           </div>
         </div>
+      </Card>
 
-        {/* User Table */}
+      {/* Users Table */}
+      <Card>
         <div className="overflow-x-auto">
-          {filteredUsers.length === 0 ? (
-            <div className="p-8 text-center">
-              <div className="p-3 bg-gray-100 dark:bg-gray-800 rounded-full w-fit mx-auto mb-4">
-                <Search className="h-6 w-6 text-gray-400" />
+          {paginatedUsers.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="text-gray-400 mb-4">
+                <UserPlus size={48} className="mx-auto" />
               </div>
               <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                No users found
+                {searchTerm ? 'No users found' : 'No system users yet'}
               </h3>
               <p className="text-gray-600 dark:text-gray-400">
-                {searchTerm ? 'Try adjusting your search terms or filters.' : 'No system users have been created yet.'}
+                {searchTerm 
+                  ? 'Try adjusting your search criteria'
+                  : 'Create your first system user to get started'
+                }
               </p>
+              {!searchTerm && (
+                <Button variant="primary" size="sm" onClick={handleCreateUser} className="mt-4">
+                  <UserPlus size={16} className="mr-2" />
+                  Add System User
+                </Button>
+              )}
             </div>
           ) : (
             <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-200 dark:border-gray-700">
-                  <th className="text-left py-3 px-6 font-medium text-gray-900 dark:text-white">User</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-white">Organization</th>
+              <thead className="bg-gray-50 dark:bg-gray-800">
+                <tr>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-white">User</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-white">Role</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-white">Plan Tier</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-white">Status</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-white">Organization</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-white">Created</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-white">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                 {paginatedUsers.map((user) => (
-                  <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                    <td className="py-4 px-6">
+                  <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+                    <td className="py-4 px-4">
                       <div>
                         <div className="font-medium text-gray-900 dark:text-white">
                           {formatUserName(user)}
                         </div>
                         <div className="text-sm text-gray-600 dark:text-gray-400">
-                          {user.email || 'No email'}
+                          {user.email}
                         </div>
                       </div>
-                    </td>
-                    <td className="py-4 px-4">
-                      <span className="font-medium text-gray-900 dark:text-white">
-                        {user.organization?.name || 'No Organization'}
-                      </span>
                     </td>
                     <td className="py-4 px-4">
                       {getRoleBadge(user.role)}
                     </td>
                     <td className="py-4 px-4">
-                      <Badge 
-                        variant={user.organization?.plan_tier === 'enterprise' ? 'gradient' : 'info'} 
-                        size="sm"
-                      >
-                        {user.organization?.plan_tier || 'free'}
-                      </Badge>
+                      {getStatusBadge(user.status || 'active')}
+                    </td>
+                    <td className="py-4 px-4">
+                      <div>
+                        <div className="font-medium text-gray-900 dark:text-white">
+                          {user.organization?.name || 'No Organization'}
+                        </div>
+                        <Badge 
+                          variant={user.organization?.plan_tier === 'enterprise' ? 'gradient' : 'info'} 
+                          size="sm"
+                        >
+                          {user.organization?.plan_tier || 'free'}
+                        </Badge>
+                      </div>
                     </td>
                     <td className="py-4 px-4">
                       <span className="text-sm text-gray-600 dark:text-gray-400">
@@ -395,9 +465,16 @@ export const SettingsUsers: React.FC = () => {
                           variant="ghost"
                           size="sm"
                           onClick={() => handleSuspendUser(user.id)}
-                          title="Suspend User"
+                          title={user.status === 'suspended' ? 'Activate User' : 'Suspend User'}
+                          disabled={actionLoading === user.id}
                         >
-                          <Ban size={16} className="text-red-600" />
+                          {actionLoading === user.id ? (
+                            <RefreshCw size={16} className="animate-spin" />
+                          ) : user.status === 'suspended' ? (
+                            <CheckCircle size={16} className="text-green-600" />
+                          ) : (
+                            <Ban size={16} className="text-red-600" />
+                          )}
                         </Button>
                       </div>
                     </td>
@@ -453,19 +530,25 @@ export const SettingsUsers: React.FC = () => {
             </p>
             {users.length > 0 && (
               <div className="mt-2 text-xs text-green-600 dark:text-green-400">
-                ✅ Connected to database - showing {users.length} real users
+                ✅ Connected to database - showing {users.length} real users with status management
               </div>
             )}
           </div>
         </div>
       </Card>
 
-      {/* Edit User Modal */}
+      {/* Modals */}
       <EditUserModal
         isOpen={isEditModalOpen}
         onClose={handleCloseEditModal}
         user={editingUser}
         onUserUpdated={handleUserUpdated}
+      />
+
+      <CreateUserModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onUserCreated={handleUserCreated}
       />
     </div>
   );

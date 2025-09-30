@@ -1,9 +1,9 @@
 // src/lib/userService.ts
-// User management service for handling system users and customer users
+// Enhanced User management service with status management and user creation
 
 import { supabase } from './supabase';
 
-// Type definitions matching your database schema
+// Enhanced type definitions matching your database schema
 export interface Profile {
   id: string;
   organization_id: string;
@@ -11,7 +11,9 @@ export interface Profile {
   last_name: string | null;
   email: string | null;
   role: 'admin' | 'support' | 'reseller' | 'customer';
+  status: 'active' | 'suspended' | 'pending';
   created_at: string;
+  updated_at?: string;
 }
 
 export interface Organization {
@@ -33,6 +35,16 @@ export interface UserUpdateData {
   email?: string;
   role?: 'admin' | 'support' | 'reseller' | 'customer';
   organization_id?: string;
+  status?: 'active' | 'suspended' | 'pending';
+}
+
+export interface CreateUserData {
+  first_name: string;
+  last_name: string;
+  email: string;
+  password: string;
+  role: 'admin' | 'support' | 'reseller' | 'customer';
+  organization_id: string;
 }
 
 export class UserService {
@@ -44,15 +56,6 @@ export class UserService {
     try {
       console.log('🔍 Fetching system users...');
       
-      // First, let's see ALL profiles to debug what roles exist
-      const allUsers = await supabase
-        .from('profiles')
-        .select('*');
-      
-      console.log('📊 All users in database:', allUsers.data);
-      console.log('📊 Roles found:', allUsers.data?.map(u => u.role));
-      
-      // Now try the filtered query
       const result = await supabase
         .from('profiles')
         .select(`
@@ -66,7 +69,7 @@ export class UserService {
       console.log('🎯 Filtered count:', result.data?.length);
       
       return result;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error in getSystemUsers:', error);
       return { data: null, error };
     }
@@ -86,7 +89,7 @@ export class UserService {
         `)
         .eq('role', 'customer')
         .order('created_at', { ascending: false });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error in getCustomerUsers:', error);
       return { data: null, error };
     }
@@ -105,7 +108,7 @@ export class UserService {
         `)
         .eq('id', userId)
         .single();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error in getUserById:', error);
       return { data: null, error };
     }
@@ -116,7 +119,9 @@ export class UserService {
    */
   static async updateUser(userId: string, updates: UserUpdateData) {
     try {
-      return await supabase
+      console.log('🔄 Updating user:', userId, updates);
+      
+      const result = await supabase
         .from('profiles')
         .update(updates)
         .eq('id', userId)
@@ -125,50 +130,158 @@ export class UserService {
           organization:organizations(*)
         `)
         .single();
-    } catch (error) {
+      
+      console.log('✅ User update result:', result);
+      return result;
+    } catch (error: any) {
       console.error('Error in updateUser:', error);
       return { data: null, error };
     }
   }
 
   /**
-   * Create a new user profile
+   * Suspend a user (set status to suspended)
    */
-  static async createUser(userData: {
-    id: string; // This should come from Supabase auth
-    organization_id: string;
-    first_name: string;
-    last_name: string;
-    email: string;
-    role: 'admin' | 'support' | 'reseller' | 'customer';
-  }) {
+  static async suspendUser(userId: string) {
     try {
-      return await supabase
+      console.log('🚫 Suspending user:', userId);
+      
+      const result = await supabase
         .from('profiles')
-        .insert(userData)
+        .update({ status: 'suspended' })
+        .eq('id', userId)
         .select(`
           *,
           organization:organizations(*)
         `)
         .single();
-    } catch (error) {
-      console.error('Error in createUser:', error);
+      
+      console.log('✅ User suspended:', result);
+      return result;
+    } catch (error: any) {
+      console.error('Error in suspendUser:', error);
       return { data: null, error };
     }
   }
 
   /**
-   * Delete a user (be careful with this!)
+   * Activate a user (set status to active)
+   */
+  static async activateUser(userId: string) {
+    try {
+      console.log('✅ Activating user:', userId);
+      
+      const result = await supabase
+        .from('profiles')
+        .update({ status: 'active' })
+        .eq('id', userId)
+        .select(`
+          *,
+          organization:organizations(*)
+        `)
+        .single();
+      
+      console.log('✅ User activated:', result);
+      return result;
+    } catch (error: any) {
+      console.error('Error in activateUser:', error);
+      return { data: null, error };
+    }
+  }
+
+  /**
+   * Create a new user via Netlify function (with admin privileges)
+   * This creates both the auth user and the profile
+   */
+  static async createUser(userData: CreateUserData) {
+    try {
+      console.log('👤 Creating new user via Netlify function:', userData.email);
+      
+      // Development fallback - check if we're in local development
+      const isDevelopment = window.location.hostname === 'localhost';
+      
+      if (isDevelopment) {
+        console.log('⚠️ Development mode: Creating profile only (no auth user)');
+        
+        // Generate a fake UUID for development
+        const fakeUserId = 'dev-' + Math.random().toString(36).substr(2, 9);
+        
+        const profileData = {
+          id: fakeUserId,
+          organization_id: userData.organization_id,
+          first_name: userData.first_name,
+          last_name: userData.last_name,
+          email: userData.email,
+          role: userData.role,
+          status: 'active' as const
+        };
+
+        const { data: profileResult, error: profileError } = await supabase
+          .from('profiles')
+          .insert(profileData)
+          .select(`
+            *,
+            organization:organizations(*)
+          `)
+          .single();
+
+        if (profileError) {
+          return { data: null, error: profileError };
+        }
+
+        console.log('✅ Development user created (profile only):', profileResult);
+        return { data: profileResult, error: null };
+      }
+      
+      // Production: Call the Netlify function
+      const response = await fetch('/.netlify/functions/create-user', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(userData)
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        console.error('❌ User creation failed:', result);
+        return { data: null, error: result.error || 'Failed to create user' };
+      }
+
+      console.log('✅ User created successfully via Netlify function:', result.data);
+      return { data: result.data, error: null };
+
+    } catch (error: any) {
+      console.error('Error in createUser:', error);
+      return { data: null, error: `Network error: ${error.message || error}` };
+    }
+  }
+
+  /**
+   * Delete a user (removes profile only - auth deletion needs Netlify function)
+   * Use with extreme caution!
    */
   static async deleteUser(userId: string) {
     try {
-      return await supabase
+      console.log('🗑️ Deleting user profile:', userId);
+      
+      // For now, just delete the profile (auth user deletion would need another Netlify function)
+      const { error: profileError } = await supabase
         .from('profiles')
         .delete()
         .eq('id', userId);
-    } catch (error) {
+
+      if (profileError) {
+        console.error('❌ Profile deletion failed:', profileError);
+        return { data: null, error: profileError };
+      }
+
+      console.log('✅ User profile deleted successfully');
+      return { data: true, error: null };
+    } catch (error: any) {
       console.error('Error in deleteUser:', error);
-      return { data: null, error };
+      return { data: null, error: error.message || error };
     }
   }
 
@@ -185,7 +298,7 @@ export class UserService {
         `)
         .eq('organization_id', organizationId)
         .order('created_at', { ascending: false });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error in getUsersByOrganization:', error);
       return { data: null, error };
     }
@@ -203,23 +316,34 @@ export class UserService {
           organization:organizations(*)
         `);
 
-      // Apply role filter based on user type
+      // Apply role filter
       if (userType === 'system') {
         query = query.in('role', ['admin', 'support', 'reseller']);
       } else if (userType === 'customer') {
         query = query.eq('role', 'customer');
       }
 
-      // Add search conditions
-      query = query.or(`
-        first_name.ilike.%${searchTerm}%,
-        last_name.ilike.%${searchTerm}%,
-        email.ilike.%${searchTerm}%
-      `);
+      // Apply search filter
+      query = query.or(`first_name.ilike.%${searchTerm}%,last_name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%`);
 
       return await query.order('created_at', { ascending: false });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error in searchUsers:', error);
+      return { data: null, error };
+    }
+  }
+
+  /**
+   * Get all organizations for user creation dropdown
+   */
+  static async getOrganizations() {
+    try {
+      return await supabase
+        .from('organizations')
+        .select('*')
+        .order('name', { ascending: true });
+    } catch (error: any) {
+      console.error('Error in getOrganizations:', error);
       return { data: null, error };
     }
   }
@@ -229,51 +353,26 @@ export class UserService {
    */
   static async getUserStats() {
     try {
-      // Get counts for different user types
-      const [systemUsersResult, customerUsersResult] = await Promise.all([
-        supabase
-          .from('profiles')
-          .select('role', { count: 'exact' })
-          .in('role', ['admin', 'support', 'reseller']),
-        supabase
-          .from('profiles')
-          .select('role', { count: 'exact' })
-          .eq('role', 'customer')
-      ]);
-
-      const systemCount = systemUsersResult.count || 0;
-      const customerCount = customerUsersResult.count || 0;
-
-      // Get role-specific counts
-      const roleCountsResult = await supabase
+      // Get total counts by role and status
+      const { data: allUsers } = await supabase
         .from('profiles')
-        .select('role')
-        .in('role', ['admin', 'support', 'reseller']);
+        .select('role, status');
 
-      const roleCounts = {
-        admin: 0,
-        support: 0,
-        reseller: 0
+      if (!allUsers) return { data: null, error: 'Failed to fetch user stats' };
+
+      const stats = {
+        total: allUsers.length,
+        active: allUsers.filter(u => u.status === 'active').length,
+        suspended: allUsers.filter(u => u.status === 'suspended').length,
+        pending: allUsers.filter(u => u.status === 'pending').length,
+        admin: allUsers.filter(u => u.role === 'admin').length,
+        support: allUsers.filter(u => u.role === 'support').length,
+        reseller: allUsers.filter(u => u.role === 'reseller').length,
+        customer: allUsers.filter(u => u.role === 'customer').length
       };
 
-      if (roleCountsResult.data) {
-        roleCountsResult.data.forEach(user => {
-          if (user.role === 'admin') roleCounts.admin++;
-          else if (user.role === 'support') roleCounts.support++;
-          else if (user.role === 'reseller') roleCounts.reseller++;
-        });
-      }
-
-      return {
-        data: {
-          totalSystemUsers: systemCount,
-          totalCustomerUsers: customerCount,
-          totalUsers: systemCount + customerCount,
-          ...roleCounts
-        },
-        error: null
-      };
-    } catch (error) {
+      return { data: stats, error: null };
+    } catch (error: any) {
       console.error('Error in getUserStats:', error);
       return { data: null, error };
     }
