@@ -1,102 +1,109 @@
 // src/components/pages/SettingsUsers.tsx
-// Updated to focus on Admin and Manager user management only
+// Updated to use real Supabase data via UserService with Edit User Modal integration
 
 import {
   Ban,
-  CheckCircle,
   Crown,
   Download,
   Edit,
   Eye,
+  Loader,
   LogIn,
   Search,
   Shield,
   UserPlus
 } from 'lucide-react';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { ProfileWithOrganization, UserService } from '../../lib/userService';
+import { EditUserModal } from '../modal/EditUserModal';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 
-// Mock user data (Admin and Manager roles only)
-interface SystemUser {
-  id: string;
-  name: string;
-  email: string;
-  organization: string;
-  role: 'admin' | 'manager';
-  status: 'active' | 'suspended';
-  lastLogin: string;
-  accountCreated: string;
-  permissions: string[];
-  createdBy: string;
-}
-
-const mockSystemUsers: SystemUser[] = [
-  {
-    id: '1',
-    name: 'John Admin',
-    email: 'john@gbp-platform.com',
-    organization: 'GBP Platform',
-    role: 'admin',
-    status: 'active',
-    lastLogin: '1 hour ago',
-    accountCreated: '2023-12-01',
-    permissions: ['full_system_access', 'user_management', 'billing_access'],
-    createdBy: 'System'
-  },
-  {
-    id: '2',
-    name: 'Maria Manager',
-    email: 'maria@gbp-platform.com',
-    organization: 'GBP Platform',
-    role: 'manager',
-    status: 'active',
-    lastLogin: '3 hours ago',
-    accountCreated: '2024-01-15',
-    permissions: ['customer_management', 'support_access'],
-    createdBy: 'john@gbp-platform.com'
-  },
-  {
-    id: '3',
-    name: 'David Director',
-    email: 'david@subsidiary.com',
-    organization: 'Subsidiary Corp',
-    role: 'manager',
-    status: 'active',
-    lastLogin: '2 days ago',
-    accountCreated: '2024-02-10',
-    permissions: ['customer_management', 'reports_access'],
-    createdBy: 'john@gbp-platform.com'
-  }
-];
+// Real user interface matching your database schema
+interface SystemUser extends ProfileWithOrganization {}
 
 export const SettingsUsers: React.FC = () => {
+  const [users, setUsers] = useState<SystemUser[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'manager'>('all');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended'>('all');
-  // const [selectedUser, setSelectedUser] = useState<SystemUser | null>(null);
+  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'support' | 'reseller'>('all');
   const [currentPage, setCurrentPage] = useState(1);
+  const [editingUser, setEditingUser] = useState<SystemUser | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const usersPerPage = 20;
 
-  const filteredUsers = mockSystemUsers.filter(user => {
-    const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         user.organization.toLowerCase().includes(searchTerm.toLowerCase());
+  // Fetch users from database
+  useEffect(() => {
+    async function fetchUsers() {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        const { data, error } = await UserService.getSystemUsers();
+        
+        if (error) {
+          console.error('Error fetching system users:', error);
+          setError('Failed to load system users. Please try again.');
+        } else {
+          setUsers(data || []);
+          console.log('Loaded system users:', data?.length || 0);
+        }
+      } catch (err) {
+        console.error('Unexpected error:', err);
+        setError('An unexpected error occurred while loading users.');
+      } finally {
+        setLoading(false);
+      }
+    }
+    
+    fetchUsers();
+  }, []);
+
+  // Filter users based on search and filters
+  const filteredUsers = users.filter(user => {
+    const fullName = `${user.first_name || ''} ${user.last_name || ''}`.trim();
+    const email = user.email || '';
+    const orgName = user.organization?.name || '';
+    
+    const matchesSearch = fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         orgName.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesRole = roleFilter === 'all' || user.role === roleFilter;
-    const matchesStatus = statusFilter === 'all' || user.status === statusFilter;
     
-    return matchesSearch && matchesRole && matchesStatus;
+    return matchesSearch && matchesRole;
   });
 
   const totalPages = Math.ceil(filteredUsers.length / usersPerPage);
   const startIndex = (currentPage - 1) * usersPerPage;
   const paginatedUsers = filteredUsers.slice(startIndex, startIndex + usersPerPage);
 
-  const handleEditUser = (user: SystemUser) => {
+  const handleEditUser = async (user: SystemUser) => {
     console.log('Edit system user:', user);
-    // TODO: Implement edit user functionality
+    setEditingUser(user);
+    setIsEditModalOpen(true);
+  };
+
+  const handleUserUpdated = (updatedUser: SystemUser) => {
+    // Update the user in the local state
+    setUsers(prevUsers => 
+      prevUsers.map(user => 
+        user.id === updatedUser.id ? updatedUser : user
+      )
+    );
+    
+    // Close the modal
+    setEditingUser(null);
+    setIsEditModalOpen(false);
+    
+    console.log('User updated successfully in UI:', updatedUser);
+  };
+
+  const handleCloseEditModal = () => {
+    setEditingUser(null);
+    setIsEditModalOpen(false);
   };
 
   const handleCreateUser = () => {
@@ -104,28 +111,111 @@ export const SettingsUsers: React.FC = () => {
     // TODO: Implement create user functionality
   };
 
-  const getRoleBadge = (role: string) => {
-    if (role === 'admin') {
-      return (
-        <Badge variant="error" size="sm" className="flex items-center gap-1">
-          <Crown size={12} />
-          Admin
-        </Badge>
-      );
-    }
-    return (
-      <Badge variant="info" size="sm" className="flex items-center gap-1">
-        <Shield size={12} />
-        Manager
-      </Badge>
-    );
+  const handleSuspendUser = async (userId: string) => {
+    console.log('Suspend user:', userId);
+    // TODO: Implement suspend user functionality
   };
 
-  const getStatusBadge = (status: string) => {
-    return status === 'active' 
-      ? <Badge variant="success" size="sm">Active</Badge>
-      : <Badge variant="error" size="sm">Suspended</Badge>;
+  const handleLoginAsUser = (user: SystemUser) => {
+    console.log('Login as user:', user);
+    // TODO: Implement login as user functionality
   };
+
+  const handleViewAuditLog = (user: SystemUser) => {
+    console.log('View audit log for:', user);
+    // TODO: Implement audit log functionality
+  };
+
+  const getRoleBadge = (role: string) => {
+    switch (role) {
+      case 'admin':
+        return (
+          <Badge variant="error" size="sm" className="flex items-center gap-1">
+            <Crown size={12} />
+            Admin
+          </Badge>
+        );
+      case 'support':
+        return (
+          <Badge variant="warning" size="sm" className="flex items-center gap-1">
+            <Shield size={12} />
+            Support
+          </Badge>
+        );
+      case 'reseller':
+        return (
+          <Badge variant="info" size="sm" className="flex items-center gap-1">
+            <Shield size={12} />
+            Reseller
+          </Badge>
+        );
+      default:
+        return (
+          <Badge variant="info" size="sm">
+            {role}
+          </Badge>
+        );
+    }
+  };
+
+  const formatUserName = (user: SystemUser): string => {
+    const firstName = user.first_name || '';
+    const lastName = user.last_name || '';
+    const fullName = `${firstName} ${lastName}`.trim();
+    return fullName || user.email || 'Unknown User';
+  };
+
+  const formatDate = (dateString: string): string => {
+    try {
+      return new Date(dateString).toLocaleDateString();
+    } catch {
+      return 'Unknown';
+    }
+  };
+
+  // Statistics from real data
+  const adminCount = users.filter(u => u.role === 'admin').length;
+  const supportCount = users.filter(u => u.role === 'support').length;
+  const resellerCount = users.filter(u => u.role === 'reseller').length;
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <Loader className="animate-spin h-8 w-8 text-blue-600 mx-auto mb-4" />
+            <p className="text-gray-600 dark:text-gray-400">Loading system users...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <Card className="p-6">
+          <div className="text-center">
+            <div className="p-3 bg-red-100 dark:bg-red-900/30 rounded-full w-fit mx-auto mb-4">
+              <Ban className="h-6 w-6 text-red-600 dark:text-red-400" />
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+              Error Loading Users
+            </h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">
+              {error}
+            </p>
+            <Button 
+              variant="primary" 
+              onClick={() => window.location.reload()}
+            >
+              Try Again
+            </Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -134,7 +224,7 @@ export const SettingsUsers: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">System Users</h1>
           <p className="text-gray-600 dark:text-gray-400 mt-1">
-            Manage Admin and Manager accounts with system-level permissions
+            Manage Admin, Support, and Reseller accounts with system-level permissions
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -144,16 +234,22 @@ export const SettingsUsers: React.FC = () => {
           </Button>
           <Button variant="primary" size="sm" onClick={handleCreateUser}>
             <UserPlus size={16} className="mr-2" />
-            Add Admin/Manager
+            Add System User
           </Button>
         </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="p-4">
           <div className="text-2xl font-bold text-gray-900 dark:text-white">
-            {mockSystemUsers.filter(u => u.role === 'admin').length}
+            {users.length}
+          </div>
+          <div className="text-sm text-gray-600 dark:text-gray-400">Total System Users</div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-2xl font-bold text-gray-900 dark:text-white">
+            {adminCount}
           </div>
           <div className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-1">
             <Crown size={14} />
@@ -162,18 +258,21 @@ export const SettingsUsers: React.FC = () => {
         </Card>
         <Card className="p-4">
           <div className="text-2xl font-bold text-gray-900 dark:text-white">
-            {mockSystemUsers.filter(u => u.role === 'manager').length}
+            {supportCount}
           </div>
           <div className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-1">
             <Shield size={14} />
-            Manager Users
+            Support Users
           </div>
         </Card>
         <Card className="p-4">
           <div className="text-2xl font-bold text-gray-900 dark:text-white">
-            {mockSystemUsers.filter(u => u.status === 'active').length}
+            {resellerCount}
           </div>
-          <div className="text-sm text-gray-600 dark:text-gray-400">Active Users</div>
+          <div className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-1">
+            <Shield size={14} />
+            Reseller Users
+          </div>
         </Card>
       </div>
 
@@ -194,21 +293,13 @@ export const SettingsUsers: React.FC = () => {
             <div className="flex gap-2">
               <select
                 value={roleFilter}
-                onChange={(e) => setRoleFilter(e.target.value as 'all' | 'admin' | 'manager')}
+                onChange={(e) => setRoleFilter(e.target.value as 'all' | 'admin' | 'support' | 'reseller')}
                 className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
               >
                 <option value="all">All Roles</option>
                 <option value="admin">Admin</option>
-                <option value="manager">Manager</option>
-              </select>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as 'all' | 'active' | 'suspended')}
-                className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-              >
-                <option value="all">All Status</option>
-                <option value="active">Active</option>
-                <option value="suspended">Suspended</option>
+                <option value="support">Support</option>
+                <option value="reseller">Reseller</option>
               </select>
             </div>
           </div>
@@ -216,108 +307,105 @@ export const SettingsUsers: React.FC = () => {
 
         {/* User Table */}
         <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-200 dark:border-gray-700">
-                <th className="text-left py-3 px-6 font-medium text-gray-900 dark:text-white">User</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-white">Organization</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-white">Role</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-white">Status</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-white">Permissions</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-white">Last Login</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-white">Created By</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-white">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-              {paginatedUsers.map((user) => (
-                <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                  <td className="py-4 px-6">
-                    <div>
-                      <div className="font-medium text-gray-900 dark:text-white">{user.name}</div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400">{user.email}</div>
-                    </div>
-                  </td>
-                  <td className="py-4 px-4">
-                    <span className="font-medium text-gray-900 dark:text-white">{user.organization}</span>
-                  </td>
-                  <td className="py-4 px-4">
-                    {getRoleBadge(user.role)}
-                  </td>
-                  <td className="py-4 px-4">
-                    {getStatusBadge(user.status)}
-                  </td>
-                  <td className="py-4 px-4">
-                    <div className="flex flex-wrap gap-1 max-w-32">
-                      {user.permissions.slice(0, 2).map(permission => (
-                        <Badge key={permission} variant="info" size="sm" className="text-xs">
-                          {permission.replace('_', ' ')}
-                        </Badge>
-                      ))}
-                      {user.permissions.length > 2 && (
-                        <Badge variant="info" size="sm" className="text-xs">
-                          +{user.permissions.length - 2}
-                        </Badge>
-                      )}
-                    </div>
-                  </td>
-                  <td className="py-4 px-4">
-                    <span className="text-sm text-gray-600 dark:text-gray-400">{user.lastLogin}</span>
-                  </td>
-                  <td className="py-4 px-4">
-                    <span className="text-sm text-gray-600 dark:text-gray-400">{user.createdBy}</span>
-                  </td>
-                  <td className="py-4 px-4">
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="ghost"
+          {filteredUsers.length === 0 ? (
+            <div className="p-8 text-center">
+              <div className="p-3 bg-gray-100 dark:bg-gray-800 rounded-full w-fit mx-auto mb-4">
+                <Search className="h-6 w-6 text-gray-400" />
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                No users found
+              </h3>
+              <p className="text-gray-600 dark:text-gray-400">
+                {searchTerm ? 'Try adjusting your search terms or filters.' : 'No system users have been created yet.'}
+              </p>
+            </div>
+          ) : (
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-200 dark:border-gray-700">
+                  <th className="text-left py-3 px-6 font-medium text-gray-900 dark:text-white">User</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-white">Organization</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-white">Role</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-white">Plan Tier</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-white">Created</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-white">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                {paginatedUsers.map((user) => (
+                  <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                    <td className="py-4 px-6">
+                      <div>
+                        <div className="font-medium text-gray-900 dark:text-white">
+                          {formatUserName(user)}
+                        </div>
+                        <div className="text-sm text-gray-600 dark:text-gray-400">
+                          {user.email || 'No email'}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-4 px-4">
+                      <span className="font-medium text-gray-900 dark:text-white">
+                        {user.organization?.name || 'No Organization'}
+                      </span>
+                    </td>
+                    <td className="py-4 px-4">
+                      {getRoleBadge(user.role)}
+                    </td>
+                    <td className="py-4 px-4">
+                      <Badge 
+                        variant={user.organization?.plan_tier === 'enterprise' ? 'gradient' : 'info'} 
                         size="sm"
-                        onClick={() => handleEditUser(user)}
-                        title="Edit User & Permissions"
                       >
-                        <Edit size={16} />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => console.log('Login as user:', user)}
-                        title="Login As User"
-                      >
-                        <LogIn size={16} />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => console.log('View audit log')}
-                        title="View Audit Log"
-                      >
-                        <Eye size={16} />
-                      </Button>
-                      {user.status === 'active' ? (
+                        {user.organization?.plan_tier || 'free'}
+                      </Badge>
+                    </td>
+                    <td className="py-4 px-4">
+                      <span className="text-sm text-gray-600 dark:text-gray-400">
+                        {formatDate(user.created_at)}
+                      </span>
+                    </td>
+                    <td className="py-4 px-4">
+                      <div className="flex items-center gap-2">
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => console.log('Suspend user')}
+                          onClick={() => handleEditUser(user)}
+                          title="Edit User & Permissions"
+                        >
+                          <Edit size={16} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleLoginAsUser(user)}
+                          title="Login As User"
+                        >
+                          <LogIn size={16} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleViewAuditLog(user)}
+                          title="View Audit Log"
+                        >
+                          <Eye size={16} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleSuspendUser(user.id)}
                           title="Suspend User"
                         >
                           <Ban size={16} className="text-red-600" />
                         </Button>
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => console.log('Activate user')}
-                          title="Activate User"
-                        >
-                          <CheckCircle size={16} className="text-green-600" />
-                        </Button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
 
         {/* Pagination */}
@@ -360,12 +448,25 @@ export const SettingsUsers: React.FC = () => {
           <div>
             <h3 className="font-medium text-gray-900 dark:text-white mb-1">System User Management</h3>
             <p className="text-sm text-gray-600 dark:text-gray-400">
-              This page is for managing Admin and Manager accounts with system-level permissions. Only Admins can create new Admin/Manager accounts 
-              or modify permissions. For managing customer accounts, use the Customers page.
+              This page shows real system users from your database with Admin, Support, and Reseller roles. 
+              Only Admins can create new system accounts or modify permissions. For managing customer accounts, use the Customers page.
             </p>
+            {users.length > 0 && (
+              <div className="mt-2 text-xs text-green-600 dark:text-green-400">
+                ✅ Connected to database - showing {users.length} real users
+              </div>
+            )}
           </div>
         </div>
       </Card>
+
+      {/* Edit User Modal */}
+      <EditUserModal
+        isOpen={isEditModalOpen}
+        onClose={handleCloseEditModal}
+        user={editingUser}
+        onUserUpdated={handleUserUpdated}
+      />
     </div>
   );
 };
