@@ -1,5 +1,5 @@
 // src/App.tsx
-// Fixed App.tsx with SampleDataManager route added
+// Fixed App.tsx to fetch real organization ID from user profile
 
 import type { User } from '@supabase/supabase-js';
 import { useEffect, useState } from 'react';
@@ -35,7 +35,7 @@ import { VoiceSearch } from './components/pages/VoiceSearch';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 
 // Debug components
-import { DeveloperModeDebugger } from './components/debug/DeveloperModeDebugger';
+// DeveloperModeDebugger is created inline, no need to import
 
 // Contexts and hooks
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -43,6 +43,7 @@ import { useDeveloperMode } from './hooks/useDeveloperMode';
 
 // Services and config
 import { getRouteConfig } from './config/routes';
+import { dataService } from './lib/dataService';
 import { supabase } from './lib/supabase';
 import type { ProductName } from './types/products';
 
@@ -60,61 +61,76 @@ interface AppUser {
   productAccess?: ProductName[];
 }
 
+// User profile from database
+interface UserProfile {
+  id: string;
+  organization_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  role: 'admin' | 'support' | 'reseller' | 'customer';
+  organization?: {
+    id: string;
+    name: string;
+    slug: string;
+    plan_tier: 'free' | 'pro' | 'enterprise';
+  };
+}
+
 function App() {
   const [user, setUser] = useState<User | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeSection, setActiveSection] = useState<SectionType>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showDebugger, setShowDebugger] = useState(false);
-  
-  // Developer mode hook - only destructure what we actually use in App.tsx
-  const { isDeveloperMode, developerRole } = useDeveloperMode();
 
-  // Debug: Log role changes
-  useEffect(() => {
-    if (isDeveloperMode) {
-      console.log('🔄 Role changed:', {
-        developerRole,
-        effectiveRole: developerRole || getUserRole(),
-        isDeveloperMode,
-        timestamp: new Date().toISOString()
-      });
-    }
-  }, [developerRole, isDeveloperMode]);
+  // Developer mode hook
+  const { isDeveloperMode, developerRole, setRole, clearDeveloperMode } = useDeveloperMode();
+
+  // Calculate effective role (developer role overrides actual role when in dev mode)
+  const effectiveRole: UserRole = (isDeveloperMode && developerRole) 
+    ? developerRole 
+    : (userProfile?.role as UserRole) || 'user';
+
+  const isDeveloperModeActive = isDeveloperMode && !!developerRole;
 
   useEffect(() => {
-    // Check if user is logged in
-    const getSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+    // Check for existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       setLoading(false);
-    };
-    getSession();
-    
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setUser(session?.user ?? null);
-        setLoading(false);
-      }
-    );
-    
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
     return () => subscription.unsubscribe();
   }, []);
 
-  const handleLogin = (userData: any) => {
-    // This will be called by your Login component
-    console.log('Login triggered:', userData);
-  };
+  // Fetch user profile when user changes
+  useEffect(() => {
+    async function fetchUserProfile() {
+      if (!user) {
+        setUserProfile(null);
+        return;
+      }
 
-  const handleLogout = async () => {
-    try {
-      await supabase.auth.signOut();
-      setUser(null);
-      setActiveSection('dashboard');
-    } catch (error) {
-      console.error('Error signing out:', error);
+      try {
+        const profile = await dataService.initializeUserData(user);
+        if (profile) {
+          setUserProfile(profile as UserProfile);
+          console.log('✅ User profile loaded:', profile);
+        }
+      } catch (error) {
+        console.error('❌ Error fetching user profile:', error);
+      }
     }
-  };
+
+    fetchUserProfile();
+  }, [user]);
 
   const handleMobileMenuToggle = () => {
     setIsMobileMenuOpen(!isMobileMenuOpen);
@@ -124,14 +140,17 @@ function App() {
     setIsMobileMenuOpen(false);
   };
 
-  // Get user's effective role (considering developer mode)
-  const getUserRole = (): UserRole => {
-    // TODO: In production, fetch this from the database
-    return 'user';
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+    setUserProfile(null);
+    setActiveSection('dashboard');
   };
 
-  const effectiveRole = developerRole || getUserRole();
-  const isDeveloperModeActive = isDeveloperMode && !!developerRole;
+  const handleLogin = () => {
+    // After login, user state will be updated via useEffect
+    setActiveSection('dashboard');
+  };
 
   // Debug keyboard shortcut
   useEffect(() => {
@@ -154,7 +173,8 @@ function App() {
       console.log('🛣️ Rendering route:', {
         section: activeSection,
         effectiveRole,
-        isDeveloperModeActive
+        isDeveloperModeActive,
+        organizationId: userProfile?.organization_id
       });
     }
 
@@ -230,16 +250,23 @@ function App() {
       return component;
     }
 
-    // Create AppUser object for ProtectedRoute
+    // Create AppUser object for ProtectedRoute using REAL profile data
     const appUser: AppUser = {
       id: user?.id || 'test-user-id',
-      name: user?.user_metadata?.name || 'Test User',
+      name: userProfile 
+        ? `${userProfile.first_name || ''} ${userProfile.last_name || ''}`.trim() || user?.email || 'User'
+        : user?.user_metadata?.name || 'Test User',
       email: user?.email || 'test@example.com',
       role: effectiveRole,
-      organizationId: 'test-org-id', // TODO: Get from database
-      organizationName: 'Test Organization',
-      productAccess: ['gbp_management'] // TODO: Get from database
+      // ✅ USE REAL ORGANIZATION ID FROM PROFILE
+      organizationId: userProfile?.organization_id || 'test-org-id',
+      organizationName: userProfile?.organization?.name || 'Organization'
     };
+
+    // Debug log
+    if (isDeveloperMode) {
+      console.log('👤 App User for ProtectedRoute:', appUser);
+    }
 
     // Wrap component in ProtectedRoute for protected routes
     return (
@@ -289,6 +316,8 @@ function App() {
       isDeveloperModeActive,
       userRoleBeingPassedToSidebar: effectiveRole,
       hasUser: !!user,
+      hasUserProfile: !!userProfile,
+      organizationId: userProfile?.organization_id,
       activeSection
     });
   }
@@ -313,57 +342,51 @@ function App() {
           <Login onLogin={handleLogin} />
         ) : (
           <>
-            {/* Developer Mode Header */}
-            {isDeveloperModeActive && (
-              <div className="bg-red-600 text-white px-4 py-2 text-sm text-center font-medium relative">
-                🛠️ DEVELOPER MODE - Role Override: {effectiveRole.toUpperCase()}
-                <button
-                  onClick={() => setShowDebugger(!showDebugger)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 bg-red-700 hover:bg-red-800 px-2 py-1 rounded text-xs"
-                >
-                  Debug
-                </button>
-              </div>
-            )}
-            
-            {/* Debug Mode Indicator for non-override state */}
-            {isDeveloperMode && !isDeveloperModeActive && (
-              <div className="bg-blue-600 text-white px-4 py-2 text-sm text-center font-medium relative">
-                🧪 DEVELOPER MODE - Using Real Role: {effectiveRole.toUpperCase()}
-                <button
-                  onClick={() => setShowDebugger(!showDebugger)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 bg-blue-700 hover:bg-blue-800 px-2 py-1 rounded text-xs"
-                >
-                  Debug
-                </button>
-              </div>
-            )}
-            
             <Header 
               onMobileMenuToggle={handleMobileMenuToggle}
               isMobileMenuOpen={isMobileMenuOpen}
               user={user}
               onLogout={handleLogout}
             />
+            
             <div className="flex">
               <Sidebar 
-                activeSection={activeSection} 
+                activeSection={activeSection}
                 onSectionChange={handleSectionChange}
                 isOpen={isMobileMenuOpen}
                 onClose={handleMobileMenuClose}
-                userRole={effectiveRole} // Pass effective role
+                userRole={effectiveRole}
                 isDeveloperModeActive={isDeveloperModeActive}
               />
-              <main className={`flex-1 lg:ml-72 p-4 lg:p-8 min-h-[calc(100vh-4rem)] ${
-                isDeveloperMode ? 'mt-20' : 'mt-16'
-              }`}>
-                {renderContent()}
+              
+              <main className="flex-1 lg:ml-64 min-h-screen">
+                <div className="p-4 sm:p-6 lg:p-8 pt-20">
+                  {renderContent()}
+                </div>
+                
                 <Footer />
               </main>
             </div>
 
-            {/* Debug Helper */}
-            {showDebugger && <DeveloperModeDebugger />}
+            {/* Developer Mode Debugger */}
+            {showDebugger && (
+              <div className="fixed bottom-4 right-4 z-50">
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold">Developer Mode</h3>
+                    <button onClick={() => setShowDebugger(false)} className="text-gray-500 hover:text-gray-700">
+                      Close
+                    </button>
+                  </div>
+                  <div className="space-y-2 text-sm">
+                    <div>Mode: {isDeveloperMode ? 'Active' : 'Inactive'}</div>
+                    <div>Role: {effectiveRole}</div>
+                    <div>Dev Role: {developerRole || 'None'}</div>
+                    <div>Org ID: {userProfile?.organization_id || 'N/A'}</div>
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>

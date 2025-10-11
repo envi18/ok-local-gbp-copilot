@@ -1,5 +1,5 @@
 // src/components/auth/ProtectedRoute.tsx
-// Fixed route protection with proper navigation handling
+// Fixed route protection with development bypass for product access
 
 import { AlertCircle, Lock, Shield } from 'lucide-react';
 import React from 'react';
@@ -64,6 +64,9 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     organizationName: 'Test Organization'
   };
 
+  // Development bypass for product access checks
+  const shouldBypassProductChecks = import.meta.env.VITE_BYPASS_PRODUCT_ACCESS === 'true';
+  
   const currentUser = user || defaultUser;
 
   // Check role-based access first (no API call needed)
@@ -104,7 +107,13 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     );
   }
 
-  // Check product access if required
+  // BYPASS PRODUCT ACCESS CHECK IN DEVELOPMENT
+  if (requiredProduct && shouldBypassProductChecks) {
+    console.log('🚫 Development Mode: Bypassing product access check for', requiredProduct);
+    return <>{children}</>;
+  }
+
+  // Check product access if required (only runs if not bypassed)
   if (requiredProduct) {
     const { hasAccess, loading, error } = useProductAccess(
       currentUser.organizationId,
