@@ -359,8 +359,8 @@ function App() {
                 isDeveloperModeActive={isDeveloperModeActive}
               />
               
-              <main className="flex-1 lg:ml-64 min-h-screen">
-                <div className="p-4 sm:p-6 lg:p-8 pt-20">
+              <main className="flex-1 lg:ml-72 min-h-screen">
+                <div className="p-4 sm:p-6 lg:p-8 pt-20 lg:pt-24">
                   {renderContent()}
                 </div>
                 
