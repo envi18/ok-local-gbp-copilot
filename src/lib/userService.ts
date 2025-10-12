@@ -348,6 +348,17 @@ export class UserService {
     }
   }
 
+  // Add this method to UserService class in src/lib/userService.ts
+// Insert after the getOrganizations method
+
+  /**
+   * Get all organizations (alias for getOrganizations)
+   * Used for customer management and user assignment
+   */
+  static async getAllOrganizations() {
+    return this.getOrganizations();
+  }
+
   /**
    * Get user statistics
    */
