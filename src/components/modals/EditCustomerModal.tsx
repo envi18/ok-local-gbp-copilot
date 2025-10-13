@@ -1,9 +1,9 @@
 // src/components/modals/EditCustomerModal.tsx
 // Modal for editing customer information
 
-import { AlertCircle, Save, X } from 'lucide-react';
+import { AlertCircle, Save, User, X } from 'lucide-react';
 import React, { useState } from 'react';
-import type { ProfileWithOrganization } from '../../lib/userService';
+import type { Organization, ProfileWithOrganization } from '../../lib/userService';
 import { UserService } from '../../lib/userService';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
@@ -11,26 +11,35 @@ import { Card } from '../ui/Card';
 
 interface EditCustomerModalProps {
   customer: ProfileWithOrganization;
+  organizations: Organization[];
   onClose: () => void;
   onCustomerUpdated: (updatedCustomer: ProfileWithOrganization) => void;
-  organizations: Array<{ id: string; name: string; plan_tier: string }>;
 }
 
 export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
   customer,
+  organizations,
   onClose,
   onCustomerUpdated,
-  organizations,
 }) => {
   const [formData, setFormData] = useState({
     first_name: customer.first_name || '',
     last_name: customer.last_name || '',
     email: customer.email || '',
     organization_id: customer.organization_id || '',
+    role: customer.role || 'customer',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Check if form has changes
+  const hasChanges = 
+    formData.first_name !== (customer.first_name || '') ||
+    formData.last_name !== (customer.last_name || '') ||
+    formData.email !== (customer.email || '') ||
+    formData.organization_id !== (customer.organization_id || '') ||
+    formData.role !== (customer.role || 'customer');
 
   // Validate form
   const validateForm = (): boolean => {
@@ -52,6 +61,10 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
 
     if (!formData.organization_id) {
       newErrors.organization_id = 'Organization is required';
+    }
+
+    if (!formData.role) {
+      newErrors.role = 'Role is required';
     }
 
     setErrors(newErrors);
@@ -77,16 +90,17 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
         last_name: formData.last_name,
         email: formData.email,
         organization_id: formData.organization_id,
+        role: formData.role,
       });
 
       if (result.error) {
         console.error('❌ Error updating customer:', result.error);
-        setError('Failed to update customer. Please try again.');
+        setError(result.error);
       } else if (result.data) {
         console.log('✅ Customer updated successfully:', result.data);
         onCustomerUpdated(result.data);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('❌ Unexpected error:', err);
       setError('An unexpected error occurred');
     } finally {
@@ -107,24 +121,70 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
     }
   };
 
+  // Handle close with unsaved changes warning
+  const handleClose = () => {
+    if (hasChanges && !saving) {
+      if (window.confirm('You have unsaved changes. Are you sure you want to close?')) {
+        onClose();
+      }
+    } else {
+      onClose();
+    }
+  };
+
   // Get organization details
   const selectedOrg = organizations.find(org => org.id === formData.organization_id);
+
+  // Get status badge
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'active':
+        return <Badge variant="success" size="sm">Active</Badge>;
+      case 'suspended':
+        return <Badge variant="error" size="sm">Suspended</Badge>;
+      case 'pending':
+        return <Badge variant="warning" size="sm">Pending</Badge>;
+      default:
+        return <Badge variant="info" size="sm">{status}</Badge>;
+    }
+  };
+
+  // Get role badge
+  const getRoleBadge = (role: string) => {
+    switch (role) {
+      case 'admin':
+        return <Badge variant="error" size="sm">Admin</Badge>;
+      case 'support':
+        return <Badge variant="warning" size="sm">Support</Badge>;
+      case 'reseller':
+        return <Badge variant="info" size="sm">Reseller</Badge>;
+      case 'customer':
+        return <Badge variant="success" size="sm">Customer</Badge>;
+      default:
+        return <Badge variant="info" size="sm">{role}</Badge>;
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-              Edit Customer
-            </h2>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-              Update customer information and organization assignment
-            </p>
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+              <User size={20} className="text-blue-600 dark:text-blue-400" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                Edit Customer
+              </h2>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                Update customer information and organization assignment
+              </p>
+            </div>
           </div>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
           >
             <X size={20} />
@@ -144,66 +204,62 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
           )}
 
           {/* Current Status Info */}
-          <div className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-            <div>
-              <span className="text-sm text-gray-600 dark:text-gray-400">Status:</span>
-              <Badge
-                variant={customer.status === 'active' ? 'success' : customer.status === 'suspended' ? 'error' : 'warning'}
-                size="sm"
-                className="ml-2"
-              >
-                {customer.status}
-              </Badge>
+          <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+            <div className="flex items-center gap-4">
+              <div>
+                <span className="text-sm text-gray-600 dark:text-gray-400">Status:</span>
+                <div className="mt-1">{getStatusBadge(customer.status)}</div>
+              </div>
+              <div>
+                <span className="text-sm text-gray-600 dark:text-gray-400">Current Role:</span>
+                <div className="mt-1">{getRoleBadge(customer.role)}</div>
+              </div>
             </div>
-            <div>
-              <span className="text-sm text-gray-600 dark:text-gray-400">Role:</span>
-              <Badge variant="info" size="sm" className="ml-2">
-                Customer
-              </Badge>
-            </div>
+            {hasChanges && (
+              <Badge variant="warning" size="sm">Unsaved Changes</Badge>
+            )}
           </div>
 
-          {/* Name Fields */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                First Name *
-              </label>
-              <input
-                type="text"
-                value={formData.first_name}
-                onChange={(e) => handleChange('first_name', e.target.value)}
-                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#f45a4e] ${
-                  errors.first_name
-                    ? 'border-red-500 dark:border-red-500'
-                    : 'border-gray-300 dark:border-gray-600'
-                } bg-white dark:bg-gray-800`}
-                placeholder="John"
-              />
-              {errors.first_name && (
-                <p className="text-sm text-red-600 dark:text-red-400 mt-1">{errors.first_name}</p>
-              )}
-            </div>
+          {/* First Name */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              First Name *
+            </label>
+            <input
+              type="text"
+              value={formData.first_name}
+              onChange={(e) => handleChange('first_name', e.target.value)}
+              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#f45a4e] ${
+                errors.first_name
+                  ? 'border-red-500 dark:border-red-500'
+                  : 'border-gray-300 dark:border-gray-600'
+              } bg-white dark:bg-gray-800 text-gray-900 dark:text-white`}
+              placeholder="John"
+            />
+            {errors.first_name && (
+              <p className="text-sm text-red-600 dark:text-red-400 mt-1">{errors.first_name}</p>
+            )}
+          </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Last Name *
-              </label>
-              <input
-                type="text"
-                value={formData.last_name}
-                onChange={(e) => handleChange('last_name', e.target.value)}
-                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#f45a4e] ${
-                  errors.last_name
-                    ? 'border-red-500 dark:border-red-500'
-                    : 'border-gray-300 dark:border-gray-600'
-                } bg-white dark:bg-gray-800`}
-                placeholder="Doe"
-              />
-              {errors.last_name && (
-                <p className="text-sm text-red-600 dark:text-red-400 mt-1">{errors.last_name}</p>
-              )}
-            </div>
+          {/* Last Name */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Last Name *
+            </label>
+            <input
+              type="text"
+              value={formData.last_name}
+              onChange={(e) => handleChange('last_name', e.target.value)}
+              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#f45a4e] ${
+                errors.last_name
+                  ? 'border-red-500 dark:border-red-500'
+                  : 'border-gray-300 dark:border-gray-600'
+              } bg-white dark:bg-gray-800 text-gray-900 dark:text-white`}
+              placeholder="Doe"
+            />
+            {errors.last_name && (
+              <p className="text-sm text-red-600 dark:text-red-400 mt-1">{errors.last_name}</p>
+            )}
           </div>
 
           {/* Email */}
@@ -219,7 +275,7 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
                 errors.email
                   ? 'border-red-500 dark:border-red-500'
                   : 'border-gray-300 dark:border-gray-600'
-              } bg-white dark:bg-gray-800`}
+              } bg-white dark:bg-gray-800 text-gray-900 dark:text-white`}
               placeholder="john.doe@example.com"
             />
             {errors.email && (
@@ -239,7 +295,7 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
                 errors.organization_id
                   ? 'border-red-500 dark:border-red-500'
                   : 'border-gray-300 dark:border-gray-600'
-              } bg-white dark:bg-gray-800`}
+              } bg-white dark:bg-gray-800 text-gray-900 dark:text-white`}
             >
               <option value="">Select organization...</option>
               {organizations.map((org) => (
@@ -253,13 +309,43 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
             )}
             {selectedOrg && (
               <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center justify-between">
                   <span className="text-sm text-blue-800 dark:text-blue-200">
                     Plan: <strong>{selectedOrg.plan_tier}</strong>
+                  </span>
+                  <span className="text-xs text-blue-600 dark:text-blue-400">
+                    ID: {selectedOrg.id.substring(0, 8)}...
                   </span>
                 </div>
               </div>
             )}
+          </div>
+
+          {/* Role */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              User Role *
+            </label>
+            <select
+              value={formData.role}
+              onChange={(e) => handleChange('role', e.target.value)}
+              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#f45a4e] ${
+                errors.role
+                  ? 'border-red-500 dark:border-red-500'
+                  : 'border-gray-300 dark:border-gray-600'
+              } bg-white dark:bg-gray-800 text-gray-900 dark:text-white`}
+            >
+              <option value="customer">Customer</option>
+              <option value="reseller">Reseller</option>
+              <option value="support">Support</option>
+              <option value="admin">Admin</option>
+            </select>
+            {errors.role && (
+              <p className="text-sm text-red-600 dark:text-red-400 mt-1">{errors.role}</p>
+            )}
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              Change the user's role to adjust their permissions and access level.
+            </p>
           </div>
 
           {/* Account Info */}
@@ -280,6 +366,14 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
                   {new Date(customer.created_at).toLocaleDateString()}
                 </span>
               </div>
+              {customer.updated_at && (
+                <div>
+                  <span className="text-gray-600 dark:text-gray-400">Last Updated:</span>
+                  <span className="ml-2 text-gray-900 dark:text-white">
+                    {new Date(customer.updated_at).toLocaleDateString()}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -288,7 +382,7 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
             <Button
               type="button"
               variant="secondary"
-              onClick={onClose}
+              onClick={handleClose}
               disabled={saving}
             >
               Cancel
@@ -296,10 +390,17 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
             <Button
               type="submit"
               variant="primary"
-              disabled={saving}
-              icon={Save}
+              disabled={saving || !hasChanges}
+              icon={saving ? undefined : Save}
             >
-              {saving ? 'Saving...' : 'Save Changes'}
+              {saving ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Saving...
+                </>
+              ) : (
+                'Save Changes'
+              )}
             </Button>
           </div>
         </form>
