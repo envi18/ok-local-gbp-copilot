@@ -1,10 +1,9 @@
 // src/components/modals/ProductAssignmentModal.tsx
-// Modal for managing customer product access
+// Fixed version with proper error handling and service layer usage
 
 import { AlertCircle, Check, Package, Save, X } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { productAccessService } from '../../lib/productAccessService';
-import { supabase } from '../../lib/supabase';
 import type { Product } from '../../types/products';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
@@ -40,9 +39,12 @@ export const ProductAssignmentModal: React.FC<ProductAssignmentModalProps> = ({
       setLoading(true);
       setError(null);
 
-      // Load all available products
+      console.log('📦 Loading products for organization:', organizationId);
+
+      // Load all available products using the service
       const products = await productAccessService.getAvailableProducts();
       setAllProducts(products);
+      console.log('✅ Loaded all products:', products.length);
 
       // Load currently assigned products for this organization
       const orgProducts = await productAccessService.getOrganizationProducts(organizationId);
@@ -51,13 +53,10 @@ export const ProductAssignmentModal: React.FC<ProductAssignmentModalProps> = ({
       setAssignedProducts(assignedIds);
       setSelectedProducts(new Set(assignedIds)); // Initialize selection with current state
       
-      console.log('✅ Loaded products:', {
-        total: products.length,
-        assigned: assignedIds.size
-      });
-    } catch (err) {
+      console.log('✅ Loaded assigned products:', assignedIds.size);
+    } catch (err: any) {
       console.error('❌ Error loading products:', err);
-      setError('Failed to load products');
+      setError('Failed to load products. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -92,57 +91,34 @@ export const ProductAssignmentModal: React.FC<ProductAssignmentModalProps> = ({
 
       console.log('💾 Saving product assignments...');
 
-      // Get current user for audit trail
-      const { data: { user } } = await supabase.auth.getUser();
-      const grantedBy = user?.id || 'system';
-
       // Determine products to add and remove
       const toAdd = Array.from(selectedProducts).filter(id => !assignedProducts.has(id));
       const toRemove = Array.from(assignedProducts).filter(id => !selectedProducts.has(id));
 
       console.log('Changes:', { toAdd: toAdd.length, toRemove: toRemove.length });
 
-      // Add new products
-      if (toAdd.length > 0) {
-        const newAssignments = toAdd.map(productId => ({
-          organization_id: organizationId,
-          product_id: productId,
-          is_active: true,
-          activated_at: new Date().toISOString(),
-        }));
-
-        const { error: addError } = await supabase
-          .from('organization_products')
-          .upsert(newAssignments, { 
-            onConflict: 'organization_id,product_id',
-            ignoreDuplicates: false 
-          });
-
-        if (addError) {
-          console.error('❌ Error adding products:', addError);
-          throw new Error('Failed to add products');
+      // Add new products using service layer
+      for (const productId of toAdd) {
+        const result = await productAccessService.assignProductToOrganization(
+          organizationId,
+          productId
+        );
+        
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to add product');
         }
-
-        console.log('✅ Added products:', toAdd.length);
       }
 
-      // Remove products (deactivate them)
-      if (toRemove.length > 0) {
-        const { error: removeError } = await supabase
-          .from('organization_products')
-          .update({ 
-            is_active: false,
-            deactivated_at: new Date().toISOString()
-          })
-          .eq('organization_id', organizationId)
-          .in('product_id', toRemove);
-
-        if (removeError) {
-          console.error('❌ Error removing products:', removeError);
-          throw new Error('Failed to remove products');
+      // Remove products using service layer
+      for (const productId of toRemove) {
+        const result = await productAccessService.removeProductFromOrganization(
+          organizationId,
+          productId
+        );
+        
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to remove product');
         }
-
-        console.log('✅ Removed products:', toRemove.length);
       }
 
       // Success!
@@ -150,9 +126,9 @@ export const ProductAssignmentModal: React.FC<ProductAssignmentModalProps> = ({
       onProductsUpdated();
       onClose();
 
-    } catch (err) {
+    } catch (err: any) {
       console.error('❌ Error saving products:', err);
-      setError(err instanceof Error ? err.message : 'Failed to save product assignments');
+      setError(err.message || 'Failed to save product assignments');
     } finally {
       setSaving(false);
     }
@@ -269,9 +245,9 @@ export const ProductAssignmentModal: React.FC<ProductAssignmentModalProps> = ({
                         }`}>
                           {isSelected && <Check size={14} className="text-white" />}
                         </div>
-
+                        
                         {/* Product Info */}
-                        <div className="flex-1">
+                        <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
                             <h4 className="font-medium text-gray-900 dark:text-white">
                               {product.display_name}
@@ -293,24 +269,30 @@ export const ProductAssignmentModal: React.FC<ProductAssignmentModalProps> = ({
           </div>
         </div>
 
-        {/* Actions */}
-        <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 dark:border-gray-700">
+        {/* Footer */}
+        <div className="flex items-center justify-between p-6 border-t border-gray-200 dark:border-gray-700">
           <Button
-            type="button"
             variant="secondary"
             onClick={onClose}
             disabled={saving}
           >
             Cancel
           </Button>
+          
           <Button
-            type="button"
             variant="primary"
             onClick={handleSave}
-            disabled={saving || !hasChanges}
-            icon={Save}
+            disabled={!hasChanges || saving}
+            icon={saving ? undefined : Save}
           >
-            {saving ? 'Saving...' : 'Save Changes'}
+            {saving ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                Saving...
+              </>
+            ) : (
+              'Save Changes'
+            )}
           </Button>
         </div>
       </Card>
