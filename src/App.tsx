@@ -14,6 +14,7 @@ import { AdminSetup } from './components/pages/AdminSetup';
 import { AIInsights } from './components/pages/AIInsights';
 import { Alerts } from './components/pages/Alerts';
 import { Automations } from './components/pages/Automations';
+import { CommandCenter } from './components/pages/CommandCenter';
 import { Dashboard } from './components/pages/Dashboard';
 import { DatabaseCheck } from './components/pages/DatabaseCheck';
 import { FixProfile } from './components/pages/FixProfile';
@@ -183,67 +184,70 @@ function App() {
     // Get the component to render
     let component: React.ReactNode;
     
-    switch (activeSection) {
-      case 'dashboard':
-        component = <Dashboard />;
-        break;
-      case 'locations':
-        component = <Locations />;
-        break;
-      case 'ai-visibility':
-        component = <AIInsights />;
-        break;
-      case 'reviews':
-        component = <Reviews />;
-        break;
-      case 'posts':
-        component = <Posts />;
-        break;
-      case 'media':
-        component = <Media />;
-        break;
-      case 'rankings':
-        component = <Rankings />;
-        break;
-      case 'voice-search':
-        component = <VoiceSearch />;
-        break;
-      case 'premium-listings':
-        component = <PremiumListings />;
-        break;
-      case 'alerts':
-        component = <Alerts />;
-        break;
-      case 'automations':
-        component = <Automations />;
-        break;
-      case 'settings':
-        component = <SettingsGeneral />;
-        break;
-      case 'customers':
-        component = <SettingsCustomers />;
-        break;
-      case 'users':
-        component = <SettingsUsers />;
-        break;
-      case 'admin-setup':
-        component = <AdminSetup />;
-        break;
-      case 'db-check':
-        component = <DatabaseCheck />;
-        break;
-      case 'fix-profile':
-        component = <FixProfile />;
-        break;
-      case 'onboarding':
-        component = <Onboarding />;
-        break;
-      case 'sample-data':
-        component = <SampleDataManager />;
-        break;
-      default:
-        component = <Dashboard />;
-    }
+switch (activeSection) {
+  case 'dashboard':
+    component = <Dashboard />;
+    break;
+  case 'locations':
+    component = <Locations />;
+    break;
+  case 'ai-visibility':
+    component = <AIInsights />;
+    break;
+  case 'reviews':
+    component = <Reviews />;
+    break;
+  case 'posts':
+    component = <Posts />;
+    break;
+  case 'media':
+    component = <Media />;
+    break;
+  case 'rankings':
+    component = <Rankings />;
+    break;
+  case 'voice-search':
+    component = <VoiceSearch />;
+    break;
+  case 'premium-listings':
+    component = <PremiumListings />;
+    break;
+  case 'alerts':
+    component = <Alerts />;
+    break;
+  case 'automations':
+    component = <Automations />;
+    break;
+  case 'settings':
+    component = <SettingsGeneral />;
+    break;
+  case 'customers':
+    component = <SettingsCustomers />;
+    break;
+  case 'users':
+    component = <SettingsUsers />;
+    break;
+  case 'command-center':  // ← ADD THIS
+    component = <CommandCenter />;
+    break;
+  case 'admin-setup':
+    component = <AdminSetup />;
+    break;
+  case 'db-check':
+    component = <DatabaseCheck />;
+    break;
+  case 'fix-profile':
+    component = <FixProfile />;
+    break;
+  case 'onboarding':
+    component = <Onboarding />;
+    break;
+  case 'sample-data':
+    component = <SampleDataManager />;
+    break;
+  default:
+    component = <Dashboard />;
+}
 
     // If no route config exists or it's a public route, render component directly
     if (!routeConfig || routeConfig.isPublic) {

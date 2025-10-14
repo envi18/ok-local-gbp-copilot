@@ -47,6 +47,19 @@ export interface CreateUserData {
   organization_id: string;
 }
 
+export interface Profile {
+  id: string;
+  organization_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  role: 'admin' | 'support' | 'reseller' | 'customer';
+  status: 'active' | 'suspended' | 'pending';
+  created_at: string;
+  updated_at?: string;
+  last_sign_in_at?: string | null;  // ADD THIS LINE
+}
+
 export class UserService {
   /**
    * Get all system users (admin, support, reseller roles)

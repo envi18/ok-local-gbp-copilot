@@ -1,5 +1,5 @@
 // src/config/routes.ts
-// Updated route configuration with sample-data route added
+// Route configuration with Command Center added, Reports removed
 
 import type { ProductName } from '../types/products';
 
@@ -12,13 +12,9 @@ export interface RouteConfig {
   requiredRole?: UserRole;
   allowedRoles?: UserRole[];
   description?: string;
-  isPublic?: boolean; // Public routes don't require any checks
+  isPublic?: boolean;
 }
 
-/**
- * Route access control configuration
- * Updated with sample-data route
- */
 export const ROUTE_CONFIG: Record<string, RouteConfig> = {
   // Public routes - no restrictions
   dashboard: {
@@ -35,19 +31,11 @@ export const ROUTE_CONFIG: Record<string, RouteConfig> = {
     description: 'General account settings'
   },
 
-  // Always accessible to all users - no product restrictions
   locations: {
     section: 'locations',
     label: 'Locations',
     isPublic: true,
     description: 'Manage your Google Business Profile locations and connections'
-  },
-
-  reports: {
-    section: 'reports',
-    label: 'Reports',
-    isPublic: true,
-    description: 'View performance reports and analytics'
   },
 
   // Premium Listings - accessible to all users but requires product check
@@ -58,7 +46,7 @@ export const ROUTE_CONFIG: Record<string, RouteConfig> = {
     description: 'Enhanced listing management with premium features'
   },
 
-  // GBP Management product routes - requires gbp_management product
+  // GBP Management product routes
   reviews: {
     section: 'reviews',
     label: 'Reviews',
@@ -94,7 +82,6 @@ export const ROUTE_CONFIG: Record<string, RouteConfig> = {
     description: 'Configure automated workflows'
   },
 
-  // Manager/Admin routes - still need elevated permissions
   alerts: {
     section: 'alerts',
     label: 'Alerts',
@@ -127,12 +114,19 @@ export const ROUTE_CONFIG: Record<string, RouteConfig> = {
     description: 'Manage Admin and Manager user accounts'
   },
 
-  // Manager/Admin routes for customer management
   customers: {
     section: 'customers',
     label: 'Customers',
     allowedRoles: ['manager', 'admin'],
     description: 'Manage customer accounts and product access'
+  },
+
+  // NEW: Command Center - Admin only
+  'command-center': {
+    section: 'command-center',
+    label: 'Command Center',
+    requiredRole: 'admin',
+    description: 'Real-time system monitoring and admin dashboard'
   },
   
   'admin-setup': {
@@ -156,7 +150,6 @@ export const ROUTE_CONFIG: Record<string, RouteConfig> = {
     description: 'Fix user profile issues'
   },
 
-  // NEW: Sample Data Manager - Admin only
   'sample-data': {
     section: 'sample-data',
     label: 'Sample Data',
@@ -164,7 +157,6 @@ export const ROUTE_CONFIG: Record<string, RouteConfig> = {
     description: 'Create and manage sample data for development and testing'
   },
 
-  // Manager/Admin routes
   onboarding: {
     section: 'onboarding',
     label: 'Onboarding',
@@ -183,17 +175,14 @@ export function hasRouteAccess(
 ): boolean {
   const config = ROUTE_CONFIG[section];
   
-  // Route doesn't exist in config - deny access
   if (!config) {
     return false;
   }
   
-  // Public routes are always accessible
   if (config.isPublic) {
     return true;
   }
   
-  // Check role requirements first
   if (config.requiredRole) {
     const roleHierarchy: Record<UserRole, number> = {
       user: 1,
@@ -206,14 +195,12 @@ export function hasRouteAccess(
     }
   }
   
-  // Check allowed roles (exact match)
   if (config.allowedRoles && config.allowedRoles.length > 0) {
     if (!config.allowedRoles.includes(userRole)) {
       return false;
     }
   }
   
-  // Check product access
   if (config.requiredProduct) {
     if (!userProductAccess || !userProductAccess.includes(config.requiredProduct)) {
       return false;
@@ -223,16 +210,10 @@ export function hasRouteAccess(
   return true;
 }
 
-/**
- * Get route configuration for a section
- */
 export function getRouteConfig(section: string): RouteConfig | null {
   return ROUTE_CONFIG[section] || null;
 }
 
-/**
- * Get all routes a user has access to
- */
 export function getAccessibleRoutes(
   userRole: UserRole,
   userProductAccess?: ProductName[]
@@ -242,17 +223,11 @@ export function getAccessibleRoutes(
   );
 }
 
-/**
- * Check if a route requires product access (for showing upgrade prompts)
- */
 export function requiresProductAccess(section: string): boolean {
   const config = ROUTE_CONFIG[section];
   return !!(config && config.requiredProduct && !config.isPublic);
 }
 
-/**
- * Get the required product for a route
- */
 export function getRequiredProduct(section: string): ProductName | null {
   const config = ROUTE_CONFIG[section];
   return config?.requiredProduct || null;

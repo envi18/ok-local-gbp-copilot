@@ -1,11 +1,10 @@
 // src/components/pages/SettingsCustomers.tsx
-// Customer management page with product display
+// Customer management page with CSV export functionality
 
 import {
   AlertCircle,
   Ban,
   CheckCircle,
-  Download,
   Edit,
   Eye,
   Package,
@@ -14,6 +13,7 @@ import {
   UserPlus
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
+import { CSVExportService } from '../../lib/csvExportService';
 import { productAccessService } from '../../lib/productAccessService';
 import type { Organization, ProfileWithOrganization } from '../../lib/userService';
 import { UserService } from '../../lib/userService';
@@ -25,12 +25,10 @@ import { ProductAssignmentModal } from '../modals/ProductAssignmentModal';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
+import { ExportButton } from '../ui/ExportButton';
 
-// Customer type based on real database structure
 interface Customer extends ProfileWithOrganization {
-  // Extends ProfileWithOrganization which has:
-  // id, organization_id, first_name, last_name, email, role, status, created_at
-  // organization: { id, name, slug, plan_tier }
+  // Extends ProfileWithOrganization
 }
 
 export const SettingsCustomers: React.FC = () => {
@@ -39,41 +37,28 @@ export const SettingsCustomers: React.FC = () => {
   const [orgProducts, setOrgProducts] = useState<Record<string, OrganizationProduct[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
-  
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended' | 'pending'>('all');
-  const [currentPage, setCurrentPage] = useState(1);
-  const customersPerPage = 20;
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended'>('all');
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  // Edit modal state
-  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-
-  // Create customer modal state
+  // Modal states
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-
-  // Detail view modal state
-  const [viewingCustomer, setViewingCustomer] = useState<Customer | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
-
-  // Product assignment modal state
-  const [productAssignmentOrg, setProductAssignmentOrg] = useState<{ id: string; name: string } | null>(null);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [viewingCustomer, setViewingCustomer] = useState<Customer | null>(null);
+  const [productAssignmentOrg, setProductAssignmentOrg] = useState<{ id: string; name: string } | null>(null);
 
-  // Load customers and organizations from database
   useEffect(() => {
     loadData();
   }, []);
 
   const loadData = async () => {
+    setLoading(true);
+    setError(null);
+
     try {
-      setLoading(true);
-      setError(null);
-      
-      console.log('📊 Loading customers and organizations from database...');
-      
-      // Load customers
       const customersResult = await UserService.getCustomerUsers();
       if (customersResult.error) {
         console.error('❌ Error loading customers:', customersResult.error);
@@ -83,7 +68,6 @@ export const SettingsCustomers: React.FC = () => {
         const loadedCustomers = customersResult.data || [];
         setCustomers(loadedCustomers);
 
-        // Load products for each organization
         const productsMap: Record<string, OrganizationProduct[]> = {};
         for (const customer of loadedCustomers) {
           if (customer.organization_id) {
@@ -95,7 +79,6 @@ export const SettingsCustomers: React.FC = () => {
         console.log('✅ Products loaded for organizations');
       }
 
-      // Load organizations
       const orgsResult = await UserService.getAllOrganizations();
       if (orgsResult.error) {
         console.error('❌ Error loading organizations:', orgsResult.error);
@@ -111,7 +94,6 @@ export const SettingsCustomers: React.FC = () => {
     }
   };
 
-  // Filter customers based on search and status
   const filteredCustomers = customers.filter(customer => {
     const matchesSearch = 
       searchTerm === '' ||
@@ -119,43 +101,48 @@ export const SettingsCustomers: React.FC = () => {
       customer.last_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       customer.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       customer.organization?.name?.toLowerCase().includes(searchTerm.toLowerCase());
-    
+
     const matchesStatus = 
-      statusFilter === 'all' || 
+      statusFilter === 'all' ||
       customer.status === statusFilter;
-    
+
     return matchesSearch && matchesStatus;
   });
 
-  // Pagination
-  const totalPages = Math.ceil(filteredCustomers.length / customersPerPage);
-  const paginatedCustomers = filteredCustomers.slice(
-    (currentPage - 1) * customersPerPage,
-    currentPage * customersPerPage
-  );
-
-  // Statistics
-  const stats = {
-    total: customers.length,
-    active: customers.filter(c => c.status === 'active').length,
-    suspended: customers.filter(c => c.status === 'suspended').length,
-    pending: customers.filter(c => c.status === 'pending').length
-  };
-
   const handleExport = () => {
-    console.log('Export customers');
-    // TODO: Implement CSV export
+    try {
+      const exportData = filteredCustomers.map(customer => ({
+        first_name: customer.first_name || '',
+        last_name: customer.last_name || '',
+        email: customer.email || '',
+        organization_name: customer.organization?.name || 'N/A',
+        organization_plan: customer.organization?.plan_tier || 'N/A',
+        status: customer.status || 'active',
+        products: orgProducts[customer.organization_id]?.map(p => p.product?.display_name).join(', ') || 'None',
+        created_at: customer.created_at,
+        last_sign_in: customer.last_sign_in_at || 'Never'
+      }));
+
+      CSVExportService.exportToCSV({
+        filename: 'customers_export',
+        data: exportData,
+        includeMetadata: true
+      });
+
+      console.log(`✅ Exported ${exportData.length} customers to CSV`);
+    } catch (err: any) {
+      console.error('❌ Export failed:', err);
+      throw err;
+    }
   };
 
   const handleCreateCustomer = () => {
-    console.log('Create new customer');
     setIsCreateModalOpen(true);
   };
 
-  const handleCustomerCreated = (newCustomer: Customer) => {
-    console.log('✅ New customer created:', newCustomer);
-    setIsCreateModalOpen(false);
-    loadData(); // Refresh the list
+  const handleCustomerCreated = (newCustomer: ProfileWithOrganization) => {
+    console.log('✅ Customer created:', newCustomer);
+    loadData();
   };
 
   const handleCloseCreateModal = () => {
@@ -168,19 +155,15 @@ export const SettingsCustomers: React.FC = () => {
     setIsEditModalOpen(true);
   };
 
-  const handleCustomerUpdated = (updatedCustomer: Customer) => {
-    // Update the customer in the list
+  const handleCustomerUpdated = (updatedCustomer: ProfileWithOrganization) => {
+    console.log('✅ Customer updated:', updatedCustomer);
     setCustomers(prevCustomers =>
       prevCustomers.map(c =>
         c.id === updatedCustomer.id ? updatedCustomer : c
       )
     );
-    
-    // Close the modal
     setEditingCustomer(null);
     setIsEditModalOpen(false);
-    
-    console.log('✅ Customer updated successfully in UI:', updatedCustomer);
   };
 
   const handleCloseEditModal = () => {
@@ -199,7 +182,7 @@ export const SettingsCustomers: React.FC = () => {
 
   const handleProductsUpdated = () => {
     console.log('✅ Products updated, refreshing customer list');
-    loadData(); // Refresh to show updated data
+    loadData();
   };
 
   const handleCloseProductModal = () => {
@@ -219,7 +202,6 @@ export const SettingsCustomers: React.FC = () => {
   };
 
   const handleEditFromDetail = (customer: Customer) => {
-    // Close detail modal and open edit modal
     setViewingCustomer(null);
     setIsDetailModalOpen(false);
     setEditingCustomer(customer);
@@ -227,7 +209,6 @@ export const SettingsCustomers: React.FC = () => {
   };
 
   const handleManageProductsFromDetail = (customer: Customer) => {
-    // Close detail modal and open products modal
     setViewingCustomer(null);
     setIsDetailModalOpen(false);
     setProductAssignmentOrg({
@@ -252,7 +233,6 @@ export const SettingsCustomers: React.FC = () => {
         console.error('Failed to update customer status:', result.error);
         setError(`Failed to ${isCurrentlySuspended ? 'activate' : 'suspend'} customer`);
       } else if (result.data) {
-        // Update the customer in the list
         setCustomers(prevCustomers =>
           prevCustomers.map(c =>
             c.id === customerId ? result.data! : c
@@ -262,66 +242,33 @@ export const SettingsCustomers: React.FC = () => {
       }
     } catch (err: any) {
       console.error('Error updating customer status:', err);
-      setError('Failed to update customer status');
+      setError('An unexpected error occurred');
     } finally {
       setActionLoading(null);
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'active':
-        return <Badge variant="success" size="sm"><CheckCircle size={12} className="mr-1" />Active</Badge>;
-      case 'suspended':
-        return <Badge variant="error" size="sm"><Ban size={12} className="mr-1" />Suspended</Badge>;
-      case 'pending':
-        return <Badge variant="warning" size="sm">Pending</Badge>;
-      default:
-        return <Badge variant="info" size="sm">{status}</Badge>;
-    }
-  };
-
-  const getPlanBadge = (planTier: string) => {
-    if (!planTier) return <Badge variant="info" size="sm">No Plan</Badge>;
-    
-    switch (planTier) {
-      case 'enterprise':
-        return <Badge variant="gradient" size="sm">Enterprise</Badge>;
-      case 'pro':
-        return <Badge variant="success" size="sm">Pro</Badge>;
-      case 'free':
-        return <Badge variant="info" size="sm">Free</Badge>;
-      default:
-        return <Badge variant="info" size="sm">{planTier}</Badge>;
-    }
-  };
-
-  // Helper to get short product names
-  const getShortProductName = (displayName: string): string => {
-    const nameMap: Record<string, string> = {
+  const getShortProductName = (name: string): string => {
+    const shortNames: Record<string, string> = {
       'GBP Management': 'GBP',
+      'Premium Listings': 'Premium',
       'AI Visibility': 'AI',
-      'Premium Listings': 'Prem',
-      'Voice Search': 'Voice'
+      'Voice Search': 'Voice',
+      'Review Management': 'Reviews'
     };
-    
-    return nameMap[displayName] || displayName.substring(0, 4);
+    return shortNames[name] || name;
   };
 
-  const renderProductBadges = (organizationId: string) => {
-    const products = orgProducts[organizationId] || [];
+  const renderProductBadges = (customer: Customer) => {
+    const products = orgProducts[customer.organization_id] || [];
     
     if (products.length === 0) {
-      return (
-        <span className="text-xs text-gray-400 dark:text-gray-500">
-          No products
-        </span>
-      );
+      return <Badge variant="info" size="sm">No Products</Badge>;
     }
 
     return (
       <div className="flex flex-wrap gap-1">
-        {products.map((orgProduct) => (
+        {products.map(orgProduct => (
           <Badge 
             key={orgProduct.id} 
             variant="info" 
@@ -361,10 +308,11 @@ export const SettingsCustomers: React.FC = () => {
             <RefreshCw size={16} className="mr-2" />
             Refresh
           </Button>
-          <Button variant="secondary" size="sm" onClick={handleExport}>
-            <Download size={16} className="mr-2" />
-            Export
-          </Button>
+          <ExportButton 
+            onExport={handleExport}
+            disabled={filteredCustomers.length === 0}
+            size="sm"
+          />
           <Button variant="primary" size="sm" onClick={handleCreateCustomer}>
             <UserPlus size={16} className="mr-2" />
             New Customer
@@ -374,7 +322,7 @@ export const SettingsCustomers: React.FC = () => {
 
       {/* Error Display */}
       {error && (
-        <Card>
+        <Card hover={false}>
           <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
             <div className="flex items-center gap-2 text-red-800 dark:text-red-200">
               <AlertCircle size={18} />
@@ -384,102 +332,153 @@ export const SettingsCustomers: React.FC = () => {
         </Card>
       )}
 
-      {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card hover={false}>
           <div className="p-4">
-            <p className="text-sm text-gray-600 dark:text-gray-400">Total Customers</p>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{stats.total}</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Total Customers</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+                  {customers.length}
+                </p>
+              </div>
+              <div className="w-12 h-12 bg-gradient-to-r from-[#11998e] to-[#38ef7d] rounded-lg flex items-center justify-center">
+                <UserPlus className="text-white" size={24} />
+              </div>
+            </div>
           </div>
         </Card>
-        <Card>
+
+        <Card hover={false}>
           <div className="p-4">
-            <p className="text-sm text-gray-600 dark:text-gray-400">Active</p>
-            <p className="text-2xl font-bold text-green-600 dark:text-green-400 mt-1">{stats.active}</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Active</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+                  {customers.filter(c => c.status === 'active').length}
+                </p>
+              </div>
+              <div className="w-12 h-12 bg-gradient-to-r from-[#667eea] to-[#764ba2] rounded-lg flex items-center justify-center">
+                <CheckCircle className="text-white" size={24} />
+              </div>
+            </div>
           </div>
         </Card>
-        <Card>
+
+        <Card hover={false}>
           <div className="p-4">
-            <p className="text-sm text-gray-600 dark:text-gray-400">Suspended</p>
-            <p className="text-2xl font-bold text-red-600 dark:text-red-400 mt-1">{stats.suspended}</p>
-          </div>
-        </Card>
-        <Card>
-          <div className="p-4">
-            <p className="text-sm text-gray-600 dark:text-gray-400">Pending</p>
-            <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-400 mt-1">{stats.pending}</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Organizations</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+                  {organizations.length}
+                </p>
+              </div>
+              <div className="w-12 h-12 bg-gradient-to-r from-[#f093fb] to-[#f5576c] rounded-lg flex items-center justify-center">
+                <Package className="text-white" size={24} />
+              </div>
+            </div>
           </div>
         </Card>
       </div>
 
       {/* Search and Filter */}
-      <Card>
-        <div className="p-4 space-y-4">
-          <div className="flex items-center gap-4">
+      <Card hover={false}>
+        <div className="p-4">
+          <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-1 relative">
-              <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
               <input
                 type="text"
-                placeholder="Search customers..."
+                placeholder="Search by name, email, or organization..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-[#f45a4e]/20 focus:border-[#f45a4e]"
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
+                         bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                         focus:ring-2 focus:ring-[#f45a4e] focus:border-transparent"
               />
             </div>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as any)}
-              className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-[#f45a4e]/20 focus:border-[#f45a4e]"
-            >
-              <option value="all">All Status</option>
-              <option value="active">Active</option>
-              <option value="suspended">Suspended</option>
-              <option value="pending">Pending</option>
-            </select>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setStatusFilter('all')}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  statusFilter === 'all'
+                    ? 'bg-[#f45a4e] text-white'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                }`}
+              >
+                All
+              </button>
+              <button
+                onClick={() => setStatusFilter('active')}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  statusFilter === 'active'
+                    ? 'bg-[#f45a4e] text-white'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                }`}
+              >
+                Active
+              </button>
+              <button
+                onClick={() => setStatusFilter('suspended')}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  statusFilter === 'suspended'
+                    ? 'bg-[#f45a4e] text-white'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                }`}
+              >
+                Suspended
+              </button>
+            </div>
+          </div>
+          <div className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+            Showing {filteredCustomers.length} of {customers.length} customers
           </div>
         </div>
       </Card>
 
       {/* Customers Table */}
-      <Card>
+      <Card hover={false}>
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700">
+            <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
               <tr>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-900 dark:text-white">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Customer
                 </th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-900 dark:text-white">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Organization
                 </th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-900 dark:text-white">
-                  Status
-                </th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-900 dark:text-white">
-                  Plan
-                </th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-900 dark:text-white">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Products
                 </th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-900 dark:text-white">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Status
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Created
                 </th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-gray-900 dark:text-white">
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-              {paginatedCustomers.length === 0 ? (
+            <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-800">
+              {filteredCustomers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-gray-500 dark:text-gray-400">
-                    No customers found
+                  <td colSpan={6} className="px-6 py-8 text-center">
+                    <div className="text-gray-500 dark:text-gray-400">
+                      {searchTerm || statusFilter !== 'all' 
+                        ? 'No customers match your filters' 
+                        : 'No customers found'}
+                    </div>
                   </td>
                 </tr>
               ) : (
-                paginatedCustomers.map((customer) => (
-                  <tr key={customer.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                    <td className="py-3 px-4">
+                filteredCustomers.map((customer) => (
+                  <tr key={customer.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                    <td className="px-6 py-4">
                       <div>
                         <div className="font-medium text-gray-900 dark:text-white">
                           {customer.first_name} {customer.last_name}
@@ -489,58 +488,60 @@ export const SettingsCustomers: React.FC = () => {
                         </div>
                       </div>
                     </td>
-                    <td className="py-3 px-4">
+                    <td className="px-6 py-4">
                       <div className="text-sm text-gray-900 dark:text-white">
-                        {customer.organization?.name || 'No Organization'}
+                        {customer.organization?.name || 'N/A'}
+                      </div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        {customer.organization?.plan_tier || 'No Plan'}
                       </div>
                     </td>
-                    <td className="py-3 px-4">
-                      {getStatusBadge(customer.status)}
+                    <td className="px-6 py-4">
+                      {renderProductBadges(customer)}
                     </td>
-                    <td className="py-3 px-4">
-                      {getPlanBadge(customer.organization?.plan_tier || '')}
+                    <td className="px-6 py-4">
+                      {customer.status === 'active' ? (
+                        <Badge variant="success" size="sm">Active</Badge>
+                      ) : (
+                        <Badge variant="error" size="sm">Suspended</Badge>
+                      )}
                     </td>
-                    <td className="py-3 px-4">
-                      {renderProductBadges(customer.organization_id)}
+                    <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
+                      {new Date(customer.created_at).toLocaleDateString()}
                     </td>
-                    <td className="py-3 px-4">
-                      <div className="text-sm text-gray-600 dark:text-gray-400">
-                        {new Date(customer.created_at).toLocaleDateString()}
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
+                    <td className="px-6 py-4">
                       <div className="flex items-center justify-end gap-2">
                         <button
                           onClick={() => handleViewCustomer(customer)}
-                          className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+                          className="p-2 text-gray-600 dark:text-gray-400 hover:text-[#f45a4e] dark:hover:text-[#f45a4e] transition-colors"
                           title="View Details"
                         >
-                          <Eye size={16} className="text-gray-600 dark:text-gray-400" />
+                          <Eye size={16} />
                         </button>
                         <button
                           onClick={() => handleEditCustomer(customer)}
-                          className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+                          className="p-2 text-gray-600 dark:text-gray-400 hover:text-[#f45a4e] dark:hover:text-[#f45a4e] transition-colors"
                           title="Edit Customer"
                         >
-                          <Edit size={16} className="text-gray-600 dark:text-gray-400" />
+                          <Edit size={16} />
                         </button>
                         <button
                           onClick={() => handleManageProducts(customer)}
-                          className="p-1.5 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded transition-colors"
+                          className="p-2 text-gray-600 dark:text-gray-400 hover:text-[#f45a4e] dark:hover:text-[#f45a4e] transition-colors"
                           title="Manage Products"
                         >
-                          <Package size={16} className="text-purple-600 dark:text-purple-400" />
+                          <Package size={16} />
                         </button>
                         <button
                           onClick={() => handleSuspendCustomer(customer.id)}
                           disabled={actionLoading === customer.id}
-                          className="p-1.5 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-colors disabled:opacity-50"
+                          className="p-2 text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-500 transition-colors disabled:opacity-50"
                           title={customer.status === 'suspended' ? 'Activate' : 'Suspend'}
                         >
                           {actionLoading === customer.id ? (
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600"></div>
+                            <RefreshCw size={16} className="animate-spin" />
                           ) : (
-                            <Ban size={16} className="text-red-600 dark:text-red-400" />
+                            <Ban size={16} />
                           )}
                         </button>
                       </div>
@@ -551,55 +552,14 @@ export const SettingsCustomers: React.FC = () => {
             </tbody>
           </table>
         </div>
-
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between p-4 border-t border-gray-200 dark:border-gray-700">
-            <div className="text-sm text-gray-600 dark:text-gray-400">
-              Showing {(currentPage - 1) * customersPerPage + 1} to{' '}
-              {Math.min(currentPage * customersPerPage, filteredCustomers.length)} of{' '}
-              {filteredCustomers.length} customers
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-              >
-                Previous
-              </Button>
-              <div className="text-sm text-gray-600 dark:text-gray-400">
-                Page {currentPage} of {totalPages}
-              </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-              >
-                Next
-              </Button>
-            </div>
-          </div>
-        )}
       </Card>
 
-      {/* Modals */}
+      {/* Modals - FIXED: Removed isOpen prop and products prop */}
       {isCreateModalOpen && (
         <CreateCustomerModal
-          organizations={organizations}
           onClose={handleCloseCreateModal}
           onCustomerCreated={handleCustomerCreated}
-        />
-      )}
-
-      {isDetailModalOpen && viewingCustomer && (
-        <CustomerDetailModal
-          customer={viewingCustomer}
-          onClose={handleCloseDetailModal}
-          onEdit={handleEditFromDetail}
-          onManageProducts={handleManageProductsFromDetail}
+          organizations={organizations}
         />
       )}
 
@@ -609,6 +569,15 @@ export const SettingsCustomers: React.FC = () => {
           organizations={organizations}
           onClose={handleCloseEditModal}
           onCustomerUpdated={handleCustomerUpdated}
+        />
+      )}
+
+      {isDetailModalOpen && viewingCustomer && (
+        <CustomerDetailModal
+          customer={viewingCustomer}
+          onClose={handleCloseDetailModal}
+          onEdit={handleEditFromDetail}
+          onManageProducts={handleManageProductsFromDetail}
         />
       )}
 

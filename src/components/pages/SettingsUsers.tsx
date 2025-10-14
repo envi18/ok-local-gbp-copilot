@@ -1,5 +1,5 @@
 // src/components/pages/SettingsUsers.tsx
-// Enhanced Users page with status management and create user functionality
+// Enhanced Users page with status management, create user, and CSV export functionality
 
 import {
   AlertTriangle,
@@ -7,9 +7,7 @@ import {
   CheckCircle,
   Clock,
   Crown,
-  Download,
   Edit,
-  Eye,
   LogIn,
   RefreshCw,
   Search,
@@ -18,12 +16,14 @@ import {
   XCircle
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
+import { CSVExportService } from '../../lib/csvExportService';
 import { UserService, type ProfileWithOrganization } from '../../lib/userService';
 import { CreateUserModal } from '../modals/CreateUserModal';
 import { EditUserModal } from '../modals/EditUserModal';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
+import { ExportButton } from '../ui/ExportButton';
 
 type SystemUser = ProfileWithOrganization;
 
@@ -71,6 +71,34 @@ export const SettingsUsers: React.FC = () => {
     loadUsers();
   };
 
+  // Export users to CSV
+  const handleExport = () => {
+    try {
+      const exportData = filteredUsers.map(user => ({
+        first_name: user.first_name || '',
+        last_name: user.last_name || '',
+        email: user.email || '',
+        role: user.role || 'user',
+        status: user.status || 'active',
+        organization_name: user.organization?.name || 'N/A',
+        organization_plan: user.organization?.plan_tier || 'N/A',
+        created_at: user.created_at,
+        last_sign_in: user.last_sign_in_at || 'Never'
+      }));
+
+      CSVExportService.exportToCSV({
+        filename: 'system_users_export',
+        data: exportData,
+        includeMetadata: true
+      });
+
+      console.log(`✅ Exported ${exportData.length} users to CSV`);
+    } catch (err: any) {
+      console.error('❌ Export failed:', err);
+      throw err;
+    }
+  };
+
   // Filter users based on search term
   const filteredUsers = users.filter(user => {
     const fullName = `${user.first_name || ''} ${user.last_name || ''}`.toLowerCase();
@@ -89,9 +117,7 @@ export const SettingsUsers: React.FC = () => {
   // Statistics
   const adminCount = users.filter(u => u.role === 'admin').length;
   const supportCount = users.filter(u => u.role === 'support').length;
-  const resellerCount = users.filter(u => u.role === 'reseller').length;
   const activeCount = users.filter(u => u.status === 'active').length;
-  const suspendedCount = users.filter(u => u.status === 'suspended').length;
 
   const handleEditUser = (user: SystemUser) => {
     setEditingUser(user);
@@ -99,17 +125,13 @@ export const SettingsUsers: React.FC = () => {
   };
 
   const handleUserUpdated = (updatedUser: SystemUser) => {
-    // Update the user in the list
     setUsers(prevUsers => 
       prevUsers.map(user => 
         user.id === updatedUser.id ? updatedUser : user
       )
     );
-    
-    // Close the modal
     setEditingUser(null);
     setIsEditModalOpen(false);
-    
     console.log('User updated successfully in UI:', updatedUser);
   };
 
@@ -123,7 +145,6 @@ export const SettingsUsers: React.FC = () => {
   };
 
   const handleUserCreated = (newUser: SystemUser) => {
-    // Add the new user to the list
     setUsers(prevUsers => [newUser, ...prevUsers]);
     setIsCreateModalOpen(false);
     console.log('New user added to list:', newUser);
@@ -144,131 +165,91 @@ export const SettingsUsers: React.FC = () => {
         console.error('Failed to update user status:', result.error);
         setError(`Failed to ${isCurrentlySuspended ? 'activate' : 'suspend'} user`);
       } else if (result.data) {
-        // Update the user in the list
         setUsers(prevUsers =>
           prevUsers.map(user =>
             user.id === userId ? result.data! : user
           )
         );
-        console.log(`✅ User ${isCurrentlySuspended ? 'activated' : 'suspended'}:`, result.data);
+        console.log(`✅ User ${isCurrentlySuspended ? 'activated' : 'suspended'} successfully`);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error updating user status:', err);
-      setError('An error occurred while updating user status');
+      setError('An unexpected error occurred');
     } finally {
       setActionLoading(null);
     }
   };
 
-  const handleLoginAsUser = (user: SystemUser) => {
-    console.log('Login as user:', user);
-    // TODO: Implement login as user functionality
-    alert(`Login as ${user.first_name} ${user.last_name} - Feature coming soon!`);
-  };
-
-  const handleViewAuditLog = (user: SystemUser) => {
-    console.log('View audit log for:', user);
-    // TODO: Implement audit log functionality
-    alert(`Audit log for ${user.first_name} ${user.last_name} - Feature coming soon!`);
-  };
-
   const getRoleBadge = (role: string) => {
-    switch (role) {
-      case 'admin':
-        return (
-          <Badge variant="error" size="sm" className="flex items-center gap-1">
-            <Crown size={12} />
-            Admin
-          </Badge>
-        );
-      case 'support':
-        return (
-          <Badge variant="warning" size="sm" className="flex items-center gap-1">
-            <Shield size={12} />
-            Support
-          </Badge>
-        );
-      case 'reseller':
-        return (
-          <Badge variant="info" size="sm" className="flex items-center gap-1">
-            <Shield size={12} />
-            Reseller
-          </Badge>
-        );
-      default:
-        return (
-          <Badge variant="info" size="sm">
-            {role}
-          </Badge>
-        );
-    }
+    const roleConfig: Record<string, { variant: 'success' | 'warning' | 'error' | 'info', icon: any, label: string }> = {
+      admin: { variant: 'error', icon: Crown, label: 'Admin' },
+      support: { variant: 'info', icon: Shield, label: 'Support' },
+      reseller: { variant: 'warning', icon: Shield, label: 'Reseller' },
+      user: { variant: 'info', icon: Shield, label: 'User' }
+    };
+
+    const config = roleConfig[role] || roleConfig.user;
+    const Icon = config.icon;
+
+    return (
+      <Badge variant={config.variant} size="sm">
+        <Icon size={12} className="mr-1" />
+        {config.label}
+      </Badge>
+    );
   };
 
   const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'active':
-        return (
-          <Badge variant="success" size="sm" className="flex items-center gap-1">
-            <CheckCircle size={12} />
-            Active
-          </Badge>
-        );
-      case 'suspended':
-        return (
-          <Badge variant="error" size="sm" className="flex items-center gap-1">
-            <XCircle size={12} />
-            Suspended
-          </Badge>
-        );
-      case 'pending':
-        return (
-          <Badge variant="warning" size="sm" className="flex items-center gap-1">
-            <Clock size={12} />
-            Pending
-          </Badge>
-        );
-      default:
-        return (
-          <Badge variant="info" size="sm">
-            {status}
-          </Badge>
-        );
+    if (status === 'active') {
+      return (
+        <Badge variant="success" size="sm">
+          <CheckCircle size={12} className="mr-1" />
+          Active
+        </Badge>
+      );
+    } else if (status === 'suspended') {
+      return (
+        <Badge variant="error" size="sm">
+          <XCircle size={12} className="mr-1" />
+          Suspended
+        </Badge>
+      );
+    } else {
+      return (
+        <Badge variant="warning" size="sm">
+          <Clock size={12} className="mr-1" />
+          Pending
+        </Badge>
+      );
     }
   };
 
   const formatUserName = (user: SystemUser): string => {
-    const firstName = user.first_name || '';
-    const lastName = user.last_name || '';
-    return `${firstName} ${lastName}`.trim() || 'Unnamed User';
-  };
-
-  const formatDate = (dateString: string): string => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
+    if (user.first_name || user.last_name) {
+      return `${user.first_name || ''} ${user.last_name || ''}`.trim();
+    }
+    return user.email?.split('@')[0] || 'Unknown User';
   };
 
   if (loading) {
     return (
-      <div className="p-6">
-        <div className="flex items-center justify-center h-64">
-          <RefreshCw size={24} className="animate-spin text-gray-400" />
-          <span className="ml-2 text-gray-600 dark:text-gray-400">Loading system users...</span>
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#f45a4e] mx-auto mb-4"></div>
+          <p className="text-gray-600 dark:text-gray-400">Loading system users...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">System Users</h1>
           <p className="text-gray-600 dark:text-gray-400 mt-1">
-            Manage Admin, Support, and Reseller accounts with system-level permissions
+            Manage admin, support, and reseller accounts
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -276,10 +257,11 @@ export const SettingsUsers: React.FC = () => {
             <RefreshCw size={16} className="mr-2" />
             Refresh
           </Button>
-          <Button variant="secondary" size="sm">
-            <Download size={16} className="mr-2" />
-            Export
-          </Button>
+          <ExportButton 
+            onExport={handleExport}
+            disabled={filteredUsers.length === 0}
+            size="sm"
+          />
           <Button variant="primary" size="sm" onClick={handleCreateUser}>
             <UserPlus size={16} className="mr-2" />
             Add System User
@@ -287,83 +269,100 @@ export const SettingsUsers: React.FC = () => {
         </div>
       </div>
 
-      {/* Error Message */}
+      {/* Error Display */}
       {error && (
-        <Card className="p-4 border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20">
-          <div className="flex items-center gap-2 text-red-800 dark:text-red-200">
-            <AlertTriangle size={16} />
-            <span>{error}</span>
+        <Card hover={false}>
+          <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+            <div className="flex items-center gap-2 text-red-800 dark:text-red-200">
+              <AlertTriangle size={18} />
+              <span>{error}</span>
+            </div>
           </div>
         </Card>
       )}
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <Card className="p-4">
-          <div className="text-2xl font-bold text-gray-900 dark:text-white">
-            {users.length}
-          </div>
-          <div className="text-sm text-gray-600 dark:text-gray-400">Total System Users</div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-2xl font-bold text-green-600">
-            {activeCount}
-          </div>
-          <div className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-1">
-            <CheckCircle size={14} />
-            Active
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card hover={false}>
+          <div className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Total Users</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{users.length}</p>
+              </div>
+              <div className="w-12 h-12 bg-gradient-to-r from-[#11998e] to-[#38ef7d] rounded-lg flex items-center justify-center">
+                <UserPlus className="text-white" size={24} />
+              </div>
+            </div>
           </div>
         </Card>
-        <Card className="p-4">
-          <div className="text-2xl font-bold text-red-600">
-            {suspendedCount}
-          </div>
-          <div className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-1">
-            <XCircle size={14} />
-            Suspended
-          </div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-2xl font-bold text-gray-900 dark:text-white">
-            {adminCount}
-          </div>
-          <div className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-1">
-            <Crown size={14} />
-            Admin Users
+
+        <Card hover={false}>
+          <div className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Admins</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{adminCount}</p>
+              </div>
+              <div className="w-12 h-12 bg-gradient-to-r from-[#f45a4e] to-[#e53e3e] rounded-lg flex items-center justify-center">
+                <Crown className="text-white" size={24} />
+              </div>
+            </div>
           </div>
         </Card>
-        <Card className="p-4">
-          <div className="text-2xl font-bold text-gray-900 dark:text-white">
-            {supportCount + resellerCount}
+
+        <Card hover={false}>
+          <div className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Support</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{supportCount}</p>
+              </div>
+              <div className="w-12 h-12 bg-gradient-to-r from-[#667eea] to-[#764ba2] rounded-lg flex items-center justify-center">
+                <Shield className="text-white" size={24} />
+              </div>
+            </div>
           </div>
-          <div className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-1">
-            <Shield size={14} />
-            Support & Resellers
+        </Card>
+
+        <Card hover={false}>
+          <div className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Active</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{activeCount}</p>
+              </div>
+              <div className="w-12 h-12 bg-gradient-to-r from-[#38ef7d] to-[#11998e] rounded-lg flex items-center justify-center">
+                <CheckCircle className="text-white" size={24} />
+              </div>
+            </div>
           </div>
         </Card>
       </div>
 
-      {/* Search and Filters */}
-      <Card className="p-4">
-        <div className="flex items-center gap-4">
-          <div className="relative flex-1">
-            <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+      {/* Search Bar */}
+      <Card hover={false}>
+        <div className="p-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
             <input
               type="text"
               placeholder="Search by name, email, or organization..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
+                       bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                       focus:ring-2 focus:ring-[#f45a4e] focus:border-transparent"
             />
           </div>
-          <div className="text-sm text-gray-600 dark:text-gray-400">
-            {filteredUsers.length} of {users.length} users
+          <div className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+            Showing {filteredUsers.length} of {users.length} system users
           </div>
         </div>
       </Card>
 
       {/* Users Table */}
-      <Card>
+      <Card hover={false}>
         <div className="overflow-x-auto">
           {paginatedUsers.length === 0 ? (
             <div className="text-center py-12">
@@ -426,14 +425,20 @@ export const SettingsUsers: React.FC = () => {
                           variant={user.organization?.plan_tier === 'enterprise' ? 'gradient' : 'info'} 
                           size="sm"
                         >
-                          {user.organization?.plan_tier || 'free'}
+                          {user.organization?.plan_tier || 'No Plan'}
                         </Badge>
                       </div>
                     </td>
                     <td className="py-4 px-4">
-                      <span className="text-sm text-gray-600 dark:text-gray-400">
-                        {formatDate(user.created_at)}
-                      </span>
+                      <div className="text-sm text-gray-600 dark:text-gray-400">
+                        {new Date(user.created_at).toLocaleDateString()}
+                      </div>
+                      {user.last_sign_in_at && (
+                        <div className="text-xs text-gray-500 dark:text-gray-500 flex items-center gap-1 mt-1">
+                          <LogIn size={12} />
+                          {new Date(user.last_sign_in_at).toLocaleDateString()}
+                        </div>
+                      )}
                     </td>
                     <td className="py-4 px-4">
                       <div className="flex items-center gap-2">
@@ -441,25 +446,9 @@ export const SettingsUsers: React.FC = () => {
                           variant="ghost"
                           size="sm"
                           onClick={() => handleEditUser(user)}
-                          title="Edit User & Permissions"
+                          title="Edit User"
                         >
                           <Edit size={16} />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleLoginAsUser(user)}
-                          title="Login As User"
-                        >
-                          <LogIn size={16} />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleViewAuditLog(user)}
-                          title="View Audit Log"
-                        >
-                          <Eye size={16} />
                         </Button>
                         <Button
                           variant="ghost"
@@ -517,7 +506,7 @@ export const SettingsUsers: React.FC = () => {
       </Card>
 
       {/* Admin Notes */}
-      <Card className="p-4">
+      <Card hover={false} className="p-4">
         <div className="flex items-start gap-3">
           <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
             <Crown size={16} className="text-purple-600 dark:text-purple-400" />
@@ -538,18 +527,22 @@ export const SettingsUsers: React.FC = () => {
       </Card>
 
       {/* Modals */}
-      <EditUserModal
-        isOpen={isEditModalOpen}
-        onClose={handleCloseEditModal}
-        user={editingUser}
-        onUserUpdated={handleUserUpdated}
-      />
+      {isEditModalOpen && editingUser && (
+        <EditUserModal
+          isOpen={isEditModalOpen}
+          onClose={handleCloseEditModal}
+          user={editingUser}
+          onUserUpdated={handleUserUpdated}
+        />
+      )}
 
-      <CreateUserModal
-        isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
-        onUserCreated={handleUserCreated}
-      />
+      {isCreateModalOpen && (
+        <CreateUserModal
+          isOpen={isCreateModalOpen}
+          onClose={() => setIsCreateModalOpen(false)}
+          onUserCreated={handleUserCreated}
+        />
+      )}
     </div>
   );
 };

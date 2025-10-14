@@ -1,9 +1,8 @@
 // src/components/layout/Sidebar.tsx
-// Sidebar without developer mode toggle
+// Updated sidebar with Command Center (admin only) and Reports removed
 
 import {
   AlertTriangle,
-  BarChart3,
   Brain,
   FileText,
   Globe,
@@ -43,11 +42,10 @@ interface SidebarProps {
   isDeveloperModeActive?: boolean;
 }
 
-// Menu items
+// Menu items - REPORTS REMOVED, focus on product-specific pages
 const managementItems: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'locations', label: 'Locations', icon: MapPin, badge: '1' },
-  { id: 'reports', label: 'Reports', icon: BarChart3 },
   { id: 'ai-visibility', label: 'AI Visibility', icon: Brain },
   { id: 'reviews', label: 'Reviews', icon: Star },
   { id: 'posts', label: 'Posts', icon: FileText },
@@ -59,10 +57,12 @@ const managementItems: NavItem[] = [
   { id: 'alerts', label: 'Alerts', icon: AlertTriangle, badge: '3', badgeVariant: 'error', allowedRoles: ['manager', 'admin'] },
 ];
 
+// Settings items - COMMAND CENTER ADDED (admin only)
 const settingsItems: NavItem[] = [
   { id: 'settings', label: 'General', icon: Settings },
   { id: 'customers', label: 'Customers', icon: Users, allowedRoles: ['manager', 'admin'] },
   { id: 'users', label: 'Users', icon: UserCheck, requiredRole: 'admin' },
+  { id: 'command-center', label: 'Command Center', icon: Zap, requiredRole: 'admin', badge: 'LIVE', badgeVariant: 'success' },
   { id: 'onboarding', label: 'Onboarding', icon: UserPlus, badge: 'Step-by-step', badgeVariant: 'info', allowedRoles: ['manager', 'admin'] },
 ];
 
