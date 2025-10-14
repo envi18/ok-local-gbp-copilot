@@ -601,7 +601,6 @@ const handleLoginAs = async (customer: Customer) => {
         <CreateCustomerModal
           onClose={handleCloseCreateModal}
           onCustomerCreated={handleCustomerCreated}
-          organizations={organizations}
         />
       )}
 
