@@ -1,5 +1,6 @@
 // src/App.tsx
 // Fixed App.tsx to fetch real organization ID from user profile
+// With Login As functionality integrated
 
 import type { User } from '@supabase/supabase-js';
 import { useEffect, useState } from 'react';
@@ -21,6 +22,7 @@ import { FixProfile } from './components/pages/FixProfile';
 import { Locations } from './components/pages/Locations';
 import { Login } from './components/pages/Login';
 import { Media } from './components/pages/Media';
+import { MockDataManager } from './components/pages/MockDataManager';
 import Onboarding from './components/pages/Onboarding';
 import { Posts } from './components/pages/Posts';
 import { PremiumListings } from './components/pages/PremiumListings';
@@ -32,11 +34,11 @@ import { SettingsGeneral } from './components/pages/SettingsGeneral';
 import { SettingsUsers } from './components/pages/SettingsUsers';
 import { VoiceSearch } from './components/pages/VoiceSearch';
 
+// UI components
+import { LoginAsBanner } from './components/ui/LoginAsBanner';
+
 // Auth components
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
-
-// Debug components
-// DeveloperModeDebugger is created inline, no need to import
 
 // Contexts and hooks
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -45,6 +47,7 @@ import { useDeveloperMode } from './hooks/useDeveloperMode';
 // Services and config
 import { getRouteConfig } from './config/routes';
 import { dataService } from './lib/dataService';
+import { LoginAsService } from './lib/loginAsService';
 import { supabase } from './lib/supabase';
 import type { ProductName } from './types/products';
 
@@ -78,6 +81,15 @@ interface UserProfile {
   };
 }
 
+// Login As session interface
+interface LoginAsSession {
+  originalUserId: string;
+  originalUserEmail: string;
+  targetUserId: string;
+  targetUserEmail: string;
+  startedAt: string;
+}
+
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -85,9 +97,10 @@ function App() {
   const [activeSection, setActiveSection] = useState<SectionType>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showDebugger, setShowDebugger] = useState(false);
+  const [loginAsSession, setLoginAsSession] = useState<LoginAsSession | null>(null);
 
   // Developer mode hook
-  const { isDeveloperMode, developerRole, setRole, clearDeveloperMode } = useDeveloperMode();
+  const { isDeveloperMode, developerRole } = useDeveloperMode();
 
   // Calculate effective role (developer role overrides actual role when in dev mode)
   const effectiveRole: UserRole = (isDeveloperMode && developerRole) 
@@ -116,10 +129,33 @@ function App() {
     async function fetchUserProfile() {
       if (!user) {
         setUserProfile(null);
+        setLoginAsSession(null);
         return;
       }
 
       try {
+        // Check if we're in a Login As session
+        const activeSession = LoginAsService.getActiveSession();
+        setLoginAsSession(activeSession);
+        
+        if (activeSession) {
+          // In Login As session - fetch target user's profile
+          console.log('🔐 Login As active, fetching target user profile:', activeSession.targetUserId);
+          const targetProfile = await LoginAsService.getEffectiveUserProfile(user.id);
+          
+          if (targetProfile) {
+            setUserProfile(targetProfile as UserProfile);
+            console.log('✅ Loaded target user profile for Login As:', targetProfile);
+            return;
+          } else {
+            // Failed to load target profile, end session
+            console.error('❌ Failed to load target profile, ending Login As session');
+            await LoginAsService.endLoginAsSession();
+            return;
+          }
+        }
+        
+        // Normal flow - fetch current user's profile
         const profile = await dataService.initializeUserData(user);
         if (profile) {
           setUserProfile(profile as UserProfile);
@@ -142,9 +178,15 @@ function App() {
   };
 
   const handleLogout = async () => {
+    // Clear any Login As session
+    if (LoginAsService.isInLoginAsSession()) {
+      await LoginAsService.endLoginAsSession();
+    }
+    
     await supabase.auth.signOut();
     setUser(null);
     setUserProfile(null);
+    setLoginAsSession(null);
     setActiveSection('dashboard');
   };
 
@@ -175,7 +217,8 @@ function App() {
         section: activeSection,
         effectiveRole,
         isDeveloperModeActive,
-        organizationId: userProfile?.organization_id
+        organizationId: userProfile?.organization_id,
+        loginAsActive: !!loginAsSession
       });
     }
 
@@ -184,70 +227,73 @@ function App() {
     // Get the component to render
     let component: React.ReactNode;
     
-switch (activeSection) {
-  case 'dashboard':
-    component = <Dashboard />;
-    break;
-  case 'locations':
-    component = <Locations />;
-    break;
-  case 'ai-visibility':
-    component = <AIInsights />;
-    break;
-  case 'reviews':
-    component = <Reviews />;
-    break;
-  case 'posts':
-    component = <Posts />;
-    break;
-  case 'media':
-    component = <Media />;
-    break;
-  case 'rankings':
-    component = <Rankings />;
-    break;
-  case 'voice-search':
-    component = <VoiceSearch />;
-    break;
-  case 'premium-listings':
-    component = <PremiumListings />;
-    break;
-  case 'alerts':
-    component = <Alerts />;
-    break;
-  case 'automations':
-    component = <Automations />;
-    break;
-  case 'settings':
-    component = <SettingsGeneral />;
-    break;
-  case 'customers':
-    component = <SettingsCustomers />;
-    break;
-  case 'users':
-    component = <SettingsUsers />;
-    break;
-  case 'command-center':
-    component = <CommandCenter />;
-    break;
-  case 'admin-setup':
-    component = <AdminSetup />;
-    break;
-  case 'db-check':
-    component = <DatabaseCheck />;
-    break;
-  case 'fix-profile':
-    component = <FixProfile />;
-    break;
-  case 'onboarding':
-    component = <Onboarding />;
-    break;
-  case 'sample-data':
-    component = <SampleDataManager />;
-    break;
-  default:
-    component = <Dashboard />;
-}
+    switch (activeSection) {
+      case 'dashboard':
+        component = <Dashboard />;
+        break;
+      case 'locations':
+        component = <Locations />;
+        break;
+      case 'ai-visibility':
+        component = <AIInsights />;
+        break;
+      case 'reviews':
+        component = <Reviews />;
+        break;
+      case 'posts':
+        component = <Posts />;
+        break;
+      case 'media':
+        component = <Media />;
+        break;
+      case 'rankings':
+        component = <Rankings />;
+        break;
+      case 'voice-search':
+        component = <VoiceSearch />;
+        break;
+      case 'premium-listings':
+        component = <PremiumListings />;
+        break;
+      case 'alerts':
+        component = <Alerts />;
+        break;
+      case 'automations':
+        component = <Automations />;
+        break;
+      case 'settings':
+        component = <SettingsGeneral />;
+        break;
+      case 'customers':
+        component = <SettingsCustomers />;
+        break;
+      case 'users':
+        component = <SettingsUsers />;
+        break;
+      case 'command-center':
+        component = <CommandCenter />;
+        break;
+      case 'admin-setup':
+        component = <AdminSetup />;
+        break;
+      case 'db-check':
+        component = <DatabaseCheck />;
+        break;
+      case 'fix-profile':
+        component = <FixProfile />;
+        break;
+      case 'onboarding':
+        component = <Onboarding />;
+        break;
+      case 'sample-data':
+        component = <SampleDataManager />;
+        break;
+      case 'mock-data':
+        component = <MockDataManager />;
+        break;
+      default:
+        component = <Dashboard />;
+    }
 
     // If no route config exists or it's a public route, render component directly
     if (!routeConfig || routeConfig.isPublic) {
@@ -291,7 +337,8 @@ switch (activeSection) {
   const handleSectionChange = (section: SectionType) => {
     const routeConfig = getRouteConfig(section);
     
-    if (!routeConfig) {
+    // Allow mock-data and sample-data even without route config (dev tools)
+    if (!routeConfig && section !== 'mock-data' && section !== 'sample-data') {
       console.warn(`Route config not found for section: ${section}`);
       return;
     }
@@ -322,7 +369,8 @@ switch (activeSection) {
       hasUser: !!user,
       hasUserProfile: !!userProfile,
       organizationId: userProfile?.organization_id,
-      activeSection
+      activeSection,
+      loginAsActive: !!loginAsSession
     });
   }
 
@@ -355,6 +403,14 @@ switch (activeSection) {
               onLogout={handleLogout}
             />
             
+            {/* Login As Banner - Show when admin is impersonating customer */}
+            {loginAsSession && (
+              <LoginAsBanner
+                targetUserEmail={loginAsSession.targetUserEmail}
+                originalUserEmail={loginAsSession.originalUserEmail}
+              />
+            )}
+            
             <div className="flex">
               <Sidebar 
                 activeSection={activeSection}
@@ -365,7 +421,7 @@ switch (activeSection) {
                 isDeveloperModeActive={isDeveloperModeActive}
               />
               
-              <main className="flex-1 lg:ml-72 min-h-screen">
+              <main className={`flex-1 lg:ml-72 min-h-screen ${loginAsSession ? 'pt-28' : ''}`}>
                 <div className="p-4 sm:p-6 lg:p-8 pt-20 lg:pt-24">
                   {renderContent()}
                 </div>
@@ -389,6 +445,14 @@ switch (activeSection) {
                     <div>Role: {effectiveRole}</div>
                     <div>Dev Role: {developerRole || 'None'}</div>
                     <div>Org ID: {userProfile?.organization_id || 'N/A'}</div>
+                    {loginAsSession && (
+                      <>
+                        <div className="pt-2 border-t border-gray-300 dark:border-gray-600 mt-2">
+                          <div className="font-medium text-orange-600 dark:text-orange-400">Login As Active</div>
+                          <div className="text-xs">Target: {loginAsSession.targetUserEmail}</div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>

@@ -7,6 +7,7 @@ import {
   CheckCircle,
   Edit,
   Eye,
+  LogIn,
   Package,
   RefreshCw,
   Search,
@@ -14,6 +15,7 @@ import {
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { CSVExportService } from '../../lib/csvExportService';
+import { LoginAsService } from '../../lib/loginAsService';
 import { productAccessService } from '../../lib/productAccessService';
 import type { Organization, ProfileWithOrganization } from '../../lib/userService';
 import { UserService } from '../../lib/userService';
@@ -247,6 +249,32 @@ export const SettingsCustomers: React.FC = () => {
       setActionLoading(null);
     }
   };
+
+const handleLoginAs = async (customer: Customer) => {
+  try {
+    setActionLoading(customer.id);
+    console.log('🔐 Starting Login As session for:', customer.email);
+    
+    const result = await LoginAsService.startLoginAsSession(
+      customer.id,
+      customer.email || ''
+    );
+    
+    if (result.success) {
+      console.log('✅ Login As session started in new tab');
+      // Success! New tab opened with customer view
+      // No need to reload current page
+    } else {
+      console.error('❌ Failed to start Login As session:', result.error);
+      setError(result.error || 'Failed to start Login As session');
+    }
+  } catch (err: any) {
+    console.error('❌ Login As error:', err);
+    setError('An error occurred while starting Login As session');
+  } finally {
+    setActionLoading('');
+  }
+};
 
   const getShortProductName = (name: string): string => {
     const shortNames: Record<string, string> = {
@@ -518,6 +546,20 @@ export const SettingsCustomers: React.FC = () => {
                         >
                           <Eye size={16} />
                         </button>
+                        
+       {/* Login As Button - NEW */}
+    <button
+      onClick={() => handleLoginAs(customer)}
+      disabled={!!actionLoading}
+      className="text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      title="Login As Customer"
+    >
+      {actionLoading === customer.id ? (
+        <RefreshCw size={18} className="animate-spin" />
+      ) : (
+        <LogIn size={18} />
+      )}
+    </button>
                         <button
                           onClick={() => handleEditCustomer(customer)}
                           className="p-2 text-gray-600 dark:text-gray-400 hover:text-[#f45a4e] dark:hover:text-[#f45a4e] transition-colors"

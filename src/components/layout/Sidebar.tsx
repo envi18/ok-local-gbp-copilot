@@ -4,6 +4,7 @@
 import {
   AlertTriangle,
   Brain,
+  Database, // <- ADD THIS LINE
   FileText,
   Globe,
   Image,
@@ -63,6 +64,8 @@ const settingsItems: NavItem[] = [
   { id: 'customers', label: 'Customers', icon: Users, allowedRoles: ['manager', 'admin'] },
   { id: 'users', label: 'Users', icon: UserCheck, requiredRole: 'admin' },
   { id: 'command-center', label: 'Command Center', icon: Zap, requiredRole: 'admin', badge: 'LIVE', badgeVariant: 'success' },
+  { id: 'mock-data', label: 'Mock Data', icon: Database, requiredRole: 'admin', badge: 'DEV', badgeVariant: 'info' },
+  { id: 'sample-data', label: 'Sample Data', icon: Database, requiredRole: 'admin', badge: 'SQL', badgeVariant: 'gradient' },
   { id: 'onboarding', label: 'Onboarding', icon: UserPlus, badge: 'Step-by-step', badgeVariant: 'info', allowedRoles: ['manager', 'admin'] },
 ];
 

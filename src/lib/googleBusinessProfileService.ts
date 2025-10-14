@@ -1,5 +1,17 @@
 // src/lib/googleBusinessProfileService.ts
-// Google Business Profile API service for managing business data
+// UPDATED: Google Business Profile API service with mock data adapter
+
+import {
+  getMockApiDelay,
+  isGoogleApiEnabled,
+  logDataSource,
+  shouldUseMockData
+} from '../config/featureFlags';
+import {
+  getLocationsByAccount,
+  getReviewsByLocation,
+  mockGoogleBusinessData
+} from './mockGoogleBusinessData';
 
 // Type definitions for Google Business Profile API responses
 export interface BusinessAccount {
@@ -154,252 +166,255 @@ export interface GoogleBusinessProfilePost {
     mediaFormat: string;
     sourceUrl?: string;
   }>;
-  topicType: string;
 }
 
-class GoogleBusinessProfileService {
-  private readonly proxyUrl = '/.netlify/functions/google-business-proxy';
-
+/**
+ * Google Business Profile Service
+ * Handles both mock data and real API calls based on feature flags
+ */
+export class GoogleBusinessProfileService {
+  
   /**
-   * Make a request through the proxy function
-   */
-  private async makeProxyRequest(
-    endpoint: string, 
-    userId: string, 
-    httpMethod: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
-    data?: any
-  ) {
-    try {
-      const requestBody = {
-        user_id: userId,
-        endpoint,
-        method: httpMethod, // Pass the HTTP method to the proxy
-        ...(data && { data })
-      };
-
-      const response = await fetch(this.proxyUrl, {
-        method: 'POST', // Always POST to the proxy function
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('Proxy request error:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get all business accounts accessible by the authenticated user
+   * Get accessible business accounts
+   * ADAPTER: Uses mock data or real API based on feature flags
    */
   async getBusinessAccounts(userId: string): Promise<BusinessAccount[]> {
-    try {
-      const result = await this.makeProxyRequest('/accounts', userId);
-      return result.accounts || [];
-    } catch (error) {
-      console.error('Error fetching business accounts:', error);
-      throw error;
+    // Use mock data during development
+    if (shouldUseMockData()) {
+      logDataSource('mock', 'Fetching business accounts');
+      await this.simulateDelay();
+      return mockGoogleBusinessData.accounts;
     }
+    
+    // Real API call when ready
+    if (isGoogleApiEnabled()) {
+      logDataSource('api', 'Fetching business accounts');
+      const response = await fetch('/api/google-business-proxy/accounts', {
+        headers: { 'X-User-ID': userId }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch accounts: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      return data.accounts || [];
+    }
+    
+    throw new Error('Google API not configured. Please check feature flags.');
   }
-
+  
   /**
-   * Get all locations for a specific business account
+   * Get business locations for an account
+   * ADAPTER: Uses mock data or real API based on feature flags
    */
   async getBusinessLocations(userId: string, accountName: string): Promise<BusinessLocation[]> {
-    try {
-      const result = await this.makeProxyRequest(`/${accountName}/locations`, userId);
-      return result.locations || [];
-    } catch (error) {
-      console.error('Error fetching business locations:', error);
-      throw error;
+    // Use mock data during development
+    if (shouldUseMockData()) {
+      logDataSource('mock', `Fetching locations for account: ${accountName}`);
+      await this.simulateDelay();
+      return getLocationsByAccount(accountName);
     }
+    
+    // Real API call when ready
+    if (isGoogleApiEnabled()) {
+      logDataSource('api', `Fetching locations for account: ${accountName}`);
+      const response = await fetch(
+        `/api/google-business-proxy/${accountName}/locations`,
+        {
+          headers: { 'X-User-ID': userId }
+        }
+      );
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch locations: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      return data.locations || [];
+    }
+    
+    throw new Error('Google API not configured. Please check feature flags.');
   }
-
+  
   /**
-   * Get reviews for a specific location
+   * Get reviews for a location
+   * ADAPTER: Uses mock data or real API based on feature flags
    */
   async getLocationReviews(userId: string, locationName: string): Promise<BusinessReview[]> {
-    try {
-      const result = await this.makeProxyRequest(`/${locationName}/reviews`, userId);
-      return result.reviews || [];
-    } catch (error) {
-      console.error('Error fetching location reviews:', error);
-      throw error;
+    // Use mock data during development
+    if (shouldUseMockData()) {
+      logDataSource('mock', `Fetching reviews for location: ${locationName}`);
+      await this.simulateDelay();
+      return getReviewsByLocation(locationName);
     }
+    
+    // Real API call when ready
+    if (isGoogleApiEnabled()) {
+      logDataSource('api', `Fetching reviews for location: ${locationName}`);
+      const response = await fetch(
+        `/api/google-business-proxy/${locationName}/reviews`,
+        {
+          headers: { 'X-User-ID': userId }
+        }
+      );
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch reviews: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      return data.reviews || [];
+    }
+    
+    throw new Error('Google API not configured. Please check feature flags.');
   }
-
+  
   /**
-   * Get insights/analytics for a specific location
+   * Get location insights and analytics
+   * ADAPTER: Uses mock data or real API based on feature flags
    */
   async getLocationInsights(userId: string, locationName: string): Promise<LocationInsights> {
-    try {
-      // Get insights for the last 90 days
-      const endDate = new Date();
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - 90);
-
-      const requestData = {
-        locationNames: [locationName],
-        basicRequest: {
-          metricRequests: [
-            { metric: 'QUERIES_DIRECT' },
-            { metric: 'QUERIES_INDIRECT' },
-            { metric: 'VIEWS_MAPS' },
-            { metric: 'VIEWS_SEARCH' },
-            { metric: 'ACTIONS_WEBSITE' },
-            { metric: 'ACTIONS_PHONE' },
-            { metric: 'ACTIONS_DRIVING_DIRECTIONS' },
-          ],
-          timeRange: {
-            startTime: startDate.toISOString(),
-            endTime: endDate.toISOString(),
-          },
-        },
-      };
-
-      const result = await this.makeProxyRequest(
-        '/accounts/*/locations:reportInsights', 
-        userId, 
-        'POST', 
-        requestData
+    // Use mock data during development
+    if (shouldUseMockData()) {
+      logDataSource('mock', `Fetching insights for location: ${locationName}`);
+      await this.simulateDelay();
+      return mockGoogleBusinessData.insights;
+    }
+    
+    // Real API call when ready
+    if (isGoogleApiEnabled()) {
+      logDataSource('api', `Fetching insights for location: ${locationName}`);
+      const response = await fetch(
+        `/api/google-business-proxy/${locationName}/insights`,
+        {
+          headers: { 'X-User-ID': userId }
+        }
       );
       
-      return result;
-    } catch (error) {
-      console.error('Error fetching location insights:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Reply to a customer review
-   */
-  async replyToReview(userId: string, reviewName: string, replyText: string): Promise<boolean> {
-    try {
-      await this.makeProxyRequest(
-        `/${reviewName}/reply`,
-        userId,
-        'PUT',
-        { comment: replyText }
-      );
-      return true;
-    } catch (error) {
-      console.error('Error replying to review:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Create a post for a specific location
-   */
-  async createLocationPost(userId: string, locationName: string, postData: GoogleBusinessProfilePost): Promise<boolean> {
-    try {
-      await this.makeProxyRequest(
-        `/${locationName}/localPosts`,
-        userId,
-        'POST',
-        postData
-      );
-      return true;
-    } catch (error) {
-      console.error('Error creating location post:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Update location information
-   */
-  async updateLocation(userId: string, locationName: string, locationData: Partial<BusinessLocation>): Promise<BusinessLocation> {
-    try {
-      const result = await this.makeProxyRequest(
-        `/${locationName}`,
-        userId,
-        'PUT',
-        locationData
-      );
-      return result;
-    } catch (error) {
-      console.error('Error updating location:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get detailed information for a specific location
-   */
-  async getLocationDetails(userId: string, locationName: string): Promise<BusinessLocation> {
-    try {
-      const result = await this.makeProxyRequest(`/${locationName}`, userId);
-      return result;
-    } catch (error) {
-      console.error('Error fetching location details:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Helper method to format business hours for display
-   */
-  formatBusinessHours(location: BusinessLocation): string {
-    if (!location.regularHours?.periods || location.regularHours.periods.length === 0) {
-      return 'Hours not available';
-    }
-
-    const periods = location.regularHours.periods;
-    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    
-    const hoursMap = new Map<string, string>();
-    
-    periods.forEach(period => {
-      const openDay = dayNames[parseInt(period.openDay)] || period.openDay;
-      const closeDay = dayNames[parseInt(period.closeDay)] || period.closeDay;
-      const openTime = this.formatTime(period.openTime);
-      const closeTime = this.formatTime(period.closeTime);
-      
-      if (openDay === closeDay) {
-        hoursMap.set(openDay, `${openTime} - ${closeTime}`);
-      } else {
-        hoursMap.set(openDay, `${openTime} - ${closeTime} (closes ${closeDay})`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch insights: ${response.statusText}`);
       }
-    });
-
-    return Array.from(hoursMap.entries())
-      .map(([day, hours]) => `${day}: ${hours}`)
-      .join(', ');
-  }
-
-  /**
-   * Helper method to format time strings
-   */
-  private formatTime(time: string): string {
-    if (!time || time.length !== 4) return time;
+      
+      return await response.json();
+    }
     
-    const hours = parseInt(time.substring(0, 2), 10);
-    const minutes = time.substring(2, 4);
+    throw new Error('Google API not configured. Please check feature flags.');
+  }
+  
+  /**
+   * Reply to a review
+   * ADAPTER: Simulates in mock mode, real API in production
+   */
+  async replyToReview(
+    userId: string,
+    reviewName: string,
+    replyText: string
+  ): Promise<void> {
+    // Simulate in mock mode
+    if (shouldUseMockData()) {
+      logDataSource('mock', `Simulating reply to review: ${reviewName}`);
+      await this.simulateDelay();
+      console.log('Mock review reply:', { reviewName, replyText });
+      return;
+    }
+    
+    // Real API call when ready
+    if (isGoogleApiEnabled()) {
+      logDataSource('api', `Posting reply to review: ${reviewName}`);
+      const response = await fetch(
+        `/api/google-business-proxy/${reviewName}/reply`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-User-ID': userId
+          },
+          body: JSON.stringify({ comment: replyText })
+        }
+      );
+      
+      if (!response.ok) {
+        throw new Error(`Failed to post review reply: ${response.statusText}`);
+      }
+    } else {
+      throw new Error('Google API not configured. Please check feature flags.');
+    }
+  }
+  
+  /**
+   * Create a post on Google Business Profile
+   * ADAPTER: Simulates in mock mode, real API in production
+   */
+  async createPost(
+    userId: string,
+    locationName: string,
+    post: GoogleBusinessProfilePost
+  ): Promise<void> {
+    // Simulate in mock mode
+    if (shouldUseMockData()) {
+      logDataSource('mock', `Simulating post creation for: ${locationName}`);
+      await this.simulateDelay();
+      console.log('Mock post created:', { locationName, post });
+      return;
+    }
+    
+    // Real API call when ready
+    if (isGoogleApiEnabled()) {
+      logDataSource('api', `Creating post for location: ${locationName}`);
+      const response = await fetch(
+        `/api/google-business-proxy/${locationName}/posts`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-User-ID': userId
+          },
+          body: JSON.stringify(post)
+        }
+      );
+      
+      if (!response.ok) {
+        throw new Error(`Failed to create post: ${response.statusText}`);
+      }
+    } else {
+      throw new Error('Google API not configured. Please check feature flags.');
+    }
+  }
+  
+  /**
+   * Helper: Simulate API delay for realistic testing
+   * @private
+   */
+  private async simulateDelay(): Promise<void> {
+    const delay = getMockApiDelay();
+    if (delay > 0) {
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  
+  /**
+   * Helper: Format time for display (HH:MM AM/PM)
+   */
+  formatTime(time: string): string {
+    if (!time) return '';
+    
+    const [hours, minutes] = time.split(':').map(Number);
     const ampm = hours >= 12 ? 'PM' : 'AM';
     const displayHours = hours % 12 || 12;
     
-    return `${displayHours}:${minutes} ${ampm}`;
+    return `${displayHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
   }
-
+  
   /**
-   * Helper method to get primary category display name
+   * Helper: Get primary category display name
    */
   getPrimaryCategory(location: BusinessLocation): string {
     return location.primaryCategory?.displayName || 'Business';
   }
-
+  
   /**
-   * Helper method to format address for display
+   * Helper: Format address for display
    */
   formatAddress(location: BusinessLocation): string {
     if (!location.address) return 'Address not available';
@@ -415,45 +430,9 @@ class GoogleBusinessProfileService {
     
     return parts.join(', ');
   }
-
+  
   /**
-   * Helper method to compare local business data with Google data
-   */
-  compareWithLocalData(googleLocation: BusinessLocation, localLocation: any) {
-    const discrepancies = [];
-
-    // Compare basic info
-    if (googleLocation.locationName !== localLocation.name) {
-      discrepancies.push({
-        field: 'name',
-        local: localLocation.name,
-        google: googleLocation.locationName
-      });
-    }
-
-    if (googleLocation.primaryPhone !== localLocation.phone) {
-      discrepancies.push({
-        field: 'phone',
-        local: localLocation.phone,
-        google: googleLocation.primaryPhone
-      });
-    }
-
-    // Compare address
-    const googleAddress = this.formatAddress(googleLocation);
-    if (googleAddress !== localLocation.address) {
-      discrepancies.push({
-        field: 'address',
-        local: localLocation.address,
-        google: googleAddress
-      });
-    }
-
-    return discrepancies;
-  }
-
-  /**
-   * Calculate review statistics
+   * Helper: Calculate review statistics
    */
   calculateReviewStats(reviews: BusinessReview[]) {
     if (!reviews.length) {
@@ -478,42 +457,18 @@ class GoogleBusinessProfileService {
       }
       return dist;
     }, { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 } as Record<number, number>);
-
-    const reviewsWithReplies = reviews.filter(review => review.reviewReply);
-    const responseRate = (reviewsWithReplies.length / reviews.length) * 100;
-
+    
+    const reviewsWithReplies = reviews.filter(r => r.reviewReply).length;
+    const responseRate = (reviewsWithReplies / reviews.length) * 100;
+    
     return {
-      averageRating: Math.round(averageRating * 10) / 10,
+      averageRating: Number(averageRating.toFixed(1)),
       totalReviews: reviews.length,
       ratingDistribution,
-      responseRate: Math.round(responseRate)
+      responseRate: Number(responseRate.toFixed(0))
     };
-  }
-
-  /**
-   * Get business hours in structured format
-   */
-  getStructuredHours(location: BusinessLocation) {
-    if (!location.regularHours?.periods) {
-      return [];
-    }
-
-    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const hoursMap = new Map();
-
-    location.regularHours.periods.forEach(period => {
-      const day = dayNames[parseInt(period.openDay)] || period.openDay;
-      const openTime = this.formatTime(period.openTime);
-      const closeTime = this.formatTime(period.closeTime);
-      hoursMap.set(day, `${openTime} - ${closeTime}`);
-    });
-
-    return dayNames.map(day => ({
-      day: day,
-      hours: hoursMap.get(day) || 'Closed',
-      isOpen: hoursMap.has(day)
-    }));
   }
 }
 
+// Export singleton instance
 export const googleBusinessProfileService = new GoogleBusinessProfileService();
