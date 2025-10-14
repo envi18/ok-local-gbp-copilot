@@ -227,7 +227,7 @@ switch (activeSection) {
   case 'users':
     component = <SettingsUsers />;
     break;
-  case 'command-center':  // ← ADD THIS
+  case 'command-center':
     component = <CommandCenter />;
     break;
   case 'admin-setup':
@@ -329,7 +329,8 @@ switch (activeSection) {
   if (loading) {
     return (
       <ThemeProvider>
-        <div className="min-h-screen bg-white dark:bg-gray-900 flex items-center justify-center">
+        {/* UPDATED: Loading screen with new background gradients (Light: Option 3, Dark: Option 2) */}
+        <div className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-200 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-700 dark:to-slate-900 flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#f45a4e] mx-auto mb-4"></div>
             <p className="text-gray-600 dark:text-gray-400">Loading...</p>
@@ -341,7 +342,8 @@ switch (activeSection) {
 
   return (
     <ThemeProvider>
-      <div className="min-h-screen bg-white dark:bg-gray-900 text-gray-900 dark:text-white transition-colors duration-300">
+      {/* UPDATED: Main app background with new gradients (Option 2) */}
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-slate-200 to-slate-50 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-700 dark:to-slate-900 text-gray-900 dark:text-white transition-colors duration-300">
         {!user ? (
           <Login onLogin={handleLogin} />
         ) : (
