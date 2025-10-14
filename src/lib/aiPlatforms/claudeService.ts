@@ -17,7 +17,7 @@ import { getEnv } from './envHelper';
  * Claude-specific configuration
  */
 interface ClaudeConfig extends AIPlatformConfig {
-  model: string; // e.g., 'claude-3-5-sonnet-20241022', 'claude-3-haiku-20240307'
+  model: string; // e.g., 'claude-sonnet-4-5-20250929', 'claude-3-haiku-20240307'
   maxTokens: number;
   temperature: number;
 }
@@ -28,14 +28,14 @@ interface ClaudeConfig extends AIPlatformConfig {
 export class ClaudeService extends AIBasePlatformService {
   private client: Anthropic;
   private rateLimiter: RateLimiter;
-  private readonly COST_PER_1K_INPUT_TOKENS = 0.003; // Sonnet pricing
+  private readonly COST_PER_1K_INPUT_TOKENS = 0.003; // Sonnet 4.5 pricing
   private readonly COST_PER_1K_OUTPUT_TOKENS = 0.015;
 
   constructor(config: Partial<ClaudeConfig> = {}) {
     const defaultConfig: ClaudeConfig = {
       apiKey: config.apiKey || getEnv('VITE_ANTHROPIC_API_KEY') || '',
       baseUrl: 'https://api.anthropic.com',
-      model: config.model || 'claude-3-sonnet-20240229', // Use stable version
+      model: config.model || 'claude-sonnet-4-5-20250929', // Claude Sonnet 4.5 (Sept 2025)
       maxTokens: config.maxTokens || 1000,
       temperature: config.temperature || 0.7,
       timeout: config.timeout || 30000,

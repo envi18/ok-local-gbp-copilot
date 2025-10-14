@@ -17,7 +17,7 @@ import { getEnv } from './envHelper';
  * Perplexity-specific configuration
  */
 interface PerplexityConfig extends AIPlatformConfig {
-  model: string; // e.g., 'pplx-70b-online', 'pplx-7b-online'
+  model: string; // e.g., 'sonar-pro', 'sonar'
   maxTokens: number;
   temperature: number;
 }
@@ -55,16 +55,16 @@ interface PerplexityAPIResponse {
  */
 export class PerplexityService extends AIBasePlatformService {
   private rateLimiter: RateLimiter;
-  private readonly COST_PER_1M_TOKENS = 1.0; // $1 per 1M tokens for pplx-70b-online
+  private readonly COST_PER_1M_TOKENS = 1.0; // $1 per 1M tokens for sonar
 
   constructor(config: Partial<PerplexityConfig> = {}) {
     const defaultConfig: PerplexityConfig = {
       apiKey: config.apiKey || getEnv('VITE_PERPLEXITY_API_KEY') || '',
       baseUrl: 'https://api.perplexity.ai',
-      model: config.model || 'sonar-medium-online', // 'online' model has web access!
+      model: config.model || 'sonar-pro', // Sonar Pro (Jan 2025)
       maxTokens: config.maxTokens || 1000,
       temperature: config.temperature || 0.7,
-      timeout: config.timeout || 30000,
+      timeout: config.timeout || 60000, // Increased to 60 seconds for web search
     };
 
     super({ ...defaultConfig, ...config }, 'perplexity');
@@ -92,77 +92,103 @@ export class PerplexityService extends AIBasePlatformService {
       // Build the system prompt with context
       const systemPrompt = this.buildSystemPrompt(context);
 
-      // Make API request
-      const response = await fetch(`${this.config.baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.config.apiKey}`,
-        },
-        body: JSON.stringify({
-          model: this.config.model,
-          messages: [
-            {
-              role: 'system',
-              content: systemPrompt
-            },
-            {
-              role: 'user',
-              content: query
-            }
-          ],
-          max_tokens: this.config.maxTokens,
-          temperature: this.config.temperature,
-          // Perplexity-specific options
-          return_citations: true, // Get sources!
-          return_images: false,
-        }),
-        signal: AbortSignal.timeout(this.config.timeout || 30000),
-      });
+      // Create abort controller with longer timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.config.timeout || 60000);
 
-      const responseTimeMs = Date.now() - startTime;
+      try {
+        // Make API request
+        const response = await fetch(`${this.config.baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.config.apiKey}`,
+          },
+          body: JSON.stringify({
+            model: this.config.model,
+            messages: [
+              {
+                role: 'system',
+                content: systemPrompt
+              },
+              {
+                role: 'user',
+                content: query
+              }
+            ],
+            max_tokens: this.config.maxTokens,
+            temperature: this.config.temperature,
+            // Perplexity-specific options
+            return_citations: true, // Get sources!
+            return_images: false,
+          }),
+          signal: controller.signal,
+        });
 
-      // Handle errors
-      if (!response.ok) {
-        if (response.status === 429) {
-          throw new RateLimitError('perplexity');
+        clearTimeout(timeoutId);
+
+        const responseTimeMs = Date.now() - startTime;
+
+        // Handle errors
+        if (!response.ok) {
+          if (response.status === 429) {
+            throw new RateLimitError('perplexity');
+          }
+          if (response.status === 401) {
+            throw new AuthenticationError('perplexity');
+          }
+          throw new AIPlatformError(
+            `Perplexity API error: ${response.statusText}`,
+            'perplexity',
+            response.status,
+            response.status >= 500 // Server errors are retryable
+          );
         }
-        if (response.status === 401) {
-          throw new AuthenticationError('perplexity');
-        }
-        throw new AIPlatformError(
-          `Perplexity API error: ${response.statusText}`,
-          'perplexity',
-          response.status,
-          response.status >= 500 // Server errors are retryable
-        );
+
+        const data: PerplexityAPIResponse = await response.json();
+
+        // Extract response
+        const content = data.choices[0]?.message?.content || '';
+        const tokensUsed = data.usage.total_tokens;
+        
+        // Calculate cost
+        const cost = (tokensUsed / 1_000_000) * this.COST_PER_1M_TOKENS;
+
+        return {
+          platform: 'perplexity',
+          query,
+          response: content,
+          responseTimeMs,
+          tokensUsed,
+          cost,
+          metadata: {
+            model: data.model,
+            finishReason: data.choices[0]?.finish_reason,
+            hasWebAccess: true, // sonar-pro always has web access
+          },
+        };
+      } finally {
+        clearTimeout(timeoutId);
       }
-
-      const data: PerplexityAPIResponse = await response.json();
-
-      // Extract response
-      const content = data.choices[0]?.message?.content || '';
-      const tokensUsed = data.usage.total_tokens;
-      
-      // Calculate cost
-      const cost = (tokensUsed / 1_000_000) * this.COST_PER_1M_TOKENS;
-
-      return {
-        platform: 'perplexity',
-        query,
-        response: content,
-        responseTimeMs,
-        tokensUsed,
-        cost,
-        metadata: {
-          model: data.model,
-          finishReason: data.choices[0]?.finish_reason,
-          hasWebAccess: this.config.model?.includes('online'),
-        },
-      };
 
     } catch (error: any) {
       console.error('Perplexity query failed:', error);
+
+      // Better timeout error message
+      if (error.name === 'AbortError' || error.name === 'TimeoutError') {
+        return {
+          platform: 'perplexity',
+          query,
+          response: '',
+          responseTimeMs: Date.now() - startTime,
+          error: 'Request timeout - Perplexity web search took too long',
+          metadata: {
+            errorType: 'timeout',
+            retryable: true,
+            timeoutMs: this.config.timeout,
+          },
+        };
+      }
 
       return {
         platform: 'perplexity',

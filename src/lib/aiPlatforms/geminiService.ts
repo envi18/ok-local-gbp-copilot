@@ -35,7 +35,7 @@ export class GeminiService extends AIBasePlatformService {
     const defaultConfig: GeminiConfig = {
       apiKey: config.apiKey || getEnv('VITE_GOOGLE_AI_API_KEY') || '',
       baseUrl: 'https://generativelanguage.googleapis.com',
-      model: config.model || 'gemini-1.0-pro',
+model: config.model || 'gemini-2.5-pro', // Gemini 2.5 Pro (June 2025)
       maxTokens: config.maxTokens || 1000,
       temperature: config.temperature || 0.7,
       timeout: config.timeout || 30000,
