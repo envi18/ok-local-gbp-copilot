@@ -121,6 +121,20 @@ export const ROUTE_CONFIG: Record<string, RouteConfig> = {
     description: 'Manage customer accounts and product access'
   },
 
+    'google-profile': {
+    section: 'google-profile',
+    label: 'Google Profile',
+    requiredRole: 'user', // Available to all users, or change to 'admin' for admin-only
+    description: 'Interactive mock Google Business Profile interface with automation testing'
+  },
+
+  'mock-data': {
+    section: 'mock-data',
+    label: 'Mock Data',
+    requiredRole: 'admin',
+    description: 'View and manage mock Google Business data for development'
+  },
+
   // NEW: Command Center - Admin only
   'command-center': {
     section: 'command-center',

@@ -9,6 +9,7 @@ import {
   Globe,
   Image,
   LayoutDashboard,
+  Link,
   MapPin,
   Mic,
   Settings,
@@ -23,6 +24,7 @@ import React from 'react';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
+
 
 interface NavItem {
   id: string;
@@ -63,6 +65,14 @@ const settingsItems: NavItem[] = [
   { id: 'settings', label: 'General', icon: Settings },
   { id: 'customers', label: 'Customers', icon: Users, allowedRoles: ['manager', 'admin'] },
   { id: 'users', label: 'Users', icon: UserCheck, requiredRole: 'admin' },
+   {
+    id: 'google-profile',
+    label: 'Google Profile',
+    icon: Link, // or Globe, or CheckCircle
+    badge: 'Mock',
+    badgeVariant: 'gradient' as const,
+    requiredRole: 'user' // Available to all users
+  },
   { id: 'command-center', label: 'Command Center', icon: Zap, requiredRole: 'admin', badge: 'LIVE', badgeVariant: 'success' },
   { id: 'mock-data', label: 'Mock Data', icon: Database, requiredRole: 'admin', badge: 'DEV', badgeVariant: 'info' },
   { id: 'sample-data', label: 'Sample Data', icon: Database, requiredRole: 'admin', badge: 'SQL', badgeVariant: 'gradient' },
