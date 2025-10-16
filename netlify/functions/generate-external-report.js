@@ -309,7 +309,7 @@ async function competitorDiscovery(business_name, business_type, location) {
     `Tell me about ${business_name} and compare to other ${business_type} in ${location}`
   ];
   
-  const platforms = ['chatgpt', 'claude', 'gemini', 'perplexity'];
+  const platforms = ['chatgpt', 'claude', 'gemini'];
   const allResponses = [];
   const platformScores = [];
   const platformStatus = {}; // Track status of each platform
