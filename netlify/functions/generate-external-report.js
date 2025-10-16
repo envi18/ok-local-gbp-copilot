@@ -1,12 +1,17 @@
 // netlify/functions/generate-external-report.js
-// Structured to match competitor report format exactly
+// Fixed version with proper error handling and environment variable access
 
+// CRITICAL: Ensure @supabase/supabase-js is in package.json dependencies
 const { createClient } = require('@supabase/supabase-js');
 
 exports.handler = async (event, context) => {
+  // Enable longer timeout for background functions
+  context.callbackWaitsForEmptyEventLoop = false;
+
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ error: 'Method Not Allowed' })
     };
   }
@@ -15,8 +20,10 @@ exports.handler = async (event, context) => {
   try {
     body = JSON.parse(event.body);
   } catch (error) {
+    console.error('JSON parse error:', error.message);
     return {
       statusCode: 400,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ error: 'Invalid JSON body' })
     };
   }
@@ -30,19 +37,51 @@ exports.handler = async (event, context) => {
     competitor_websites
   } = body;
 
-  console.log('🚀 Starting report generation (competitor format):', {
+  console.log('[START] Report generation:', {
     report_id,
     target_website,
     business_type,
     business_location
   });
 
-  const supabase = createClient(
-    process.env.VITE_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-  );
+  // Validate required fields
+  if (!report_id || !target_website || !business_type || !business_location) {
+    console.error('[ERROR] Missing required fields');
+    return {
+      statusCode: 400,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: 'Missing required fields' })
+    };
+  }
+
+  // Environment variables - try both VITE_ prefixed and non-prefixed
+  const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    console.error('[ERROR] Missing Supabase environment variables');
+    return {
+      statusCode: 500,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: 'Server configuration error - missing database credentials' })
+    };
+  }
+
+  let supabase;
+  try {
+    supabase = createClient(supabaseUrl, supabaseServiceKey);
+    console.log('[SUCCESS] Supabase client created');
+  } catch (error) {
+    console.error('[ERROR] Failed to create Supabase client:', error.message);
+    return {
+      statusCode: 500,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: 'Database connection failed' })
+    };
+  }
 
   try {
+    // Update status to generating
     await supabase
       .from('ai_visibility_external_reports')
       .update({
@@ -51,11 +90,11 @@ exports.handler = async (event, context) => {
       })
       .eq('id', report_id);
 
-    console.log('✅ Status updated to generating');
+    console.log('[SUCCESS] Status updated to generating');
 
     const startTime = Date.now();
     
-    // Generate report matching competitor format
+    // Generate report
     const aiResults = await generateCompetitorStyleReport({
       business_name: business_name || target_website,
       business_type: business_type || 'business',
@@ -66,13 +105,14 @@ exports.handler = async (event, context) => {
 
     const duration = Date.now() - startTime;
 
-    console.log('✅ Report completed');
-    console.log(`   Duration: ${duration}ms`);
-    console.log(`   Overall Score: ${aiResults.overall_score}/100`);
-    console.log(`   Competitors Found: ${aiResults.top_competitors?.length || 0}`);
-    console.log(`   Total Cost: $${aiResults.total_cost?.toFixed(2) || '0.00'}`);
+    console.log('[SUCCESS] Report completed:', {
+      duration_ms: duration,
+      overall_score: aiResults.overall_score,
+      competitors_found: aiResults.top_competitors?.length || 0,
+      total_cost: aiResults.total_cost?.toFixed(4)
+    });
 
-    // Structure report data matching competitor format
+    // Structure report data
     const reportData = {
       id: report_id,
       organization_id: report_id,
@@ -85,7 +125,7 @@ exports.handler = async (event, context) => {
       generated_at: new Date().toISOString()
     };
 
-    // Enhanced content gap analysis matching competitor structure
+    // Enhanced content gap analysis
     const contentGapAnalysis = {
       primary_brand: {
         name: business_name,
@@ -94,7 +134,7 @@ exports.handler = async (event, context) => {
         weaknesses: aiResults.brand_weaknesses,
         ai_visibility_score: aiResults.overall_score
       },
-      top_competitors: aiResults.top_competitors,  // Only 2 competitors
+      top_competitors: aiResults.top_competitors || [],
       structural_gaps: aiResults.content_gaps.filter(g => g.gap_type === 'structural'),
       thematic_gaps: aiResults.content_gaps.filter(g => g.gap_type === 'thematic'),
       critical_topic_gaps: aiResults.content_gaps.filter(g => g.gap_type === 'critical_topic'),
@@ -118,7 +158,8 @@ exports.handler = async (event, context) => {
     const apiCost = aiResults.total_cost || 0.50;
     const queryCount = aiResults.query_count || 20;
 
-    await supabase
+    // Save report to database
+    const { error: updateError } = await supabase
       .from('ai_visibility_external_reports')
       .update({
         status: 'completed',
@@ -133,7 +174,11 @@ exports.handler = async (event, context) => {
       })
       .eq('id', report_id);
 
-    console.log('✅ Report saved to database');
+    if (updateError) {
+      throw new Error(`Database update failed: ${updateError.message}`);
+    }
+
+    console.log('[SUCCESS] Report saved to database');
 
     return {
       statusCode: 200,
@@ -150,108 +195,120 @@ exports.handler = async (event, context) => {
     };
 
   } catch (error) {
-    console.error('❌ Function error:', error);
+    console.error('[ERROR] Function error:', error.message);
+    console.error('[ERROR] Stack:', error.stack);
 
-    await supabase
-      .from('ai_visibility_external_reports')
-      .update({
-        status: 'error',
-        error_message: error.message,
-        generation_completed_at: new Date().toISOString()
-      })
-      .eq('id', report_id);
+    // Try to update error status
+    try {
+      await supabase
+        .from('ai_visibility_external_reports')
+        .update({
+          status: 'error',
+          error_message: error.message,
+          generation_completed_at: new Date().toISOString()
+        })
+        .eq('id', report_id);
+    } catch (dbError) {
+      console.error('[ERROR] Failed to update error status:', dbError.message);
+    }
 
     return {
       statusCode: 500,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         success: false,
-        error: error.message || 'Internal server error'
+        error: error.message || 'Internal server error',
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
       })
     };
   }
 };
 
 /**
- * Generate report matching competitor format exactly
+ * Generate report matching competitor format
  */
 async function generateCompetitorStyleReport(params) {
   const { business_name, business_type, location, website } = params;
   
-  console.log('🤖 Generating competitor-style report...');
+  console.log('[PHASE] Generating competitor-style report');
   
-  // Phase 1: Discover competitors
-  console.log('\n📊 Phase 1: Competitor Discovery');
-  const discoveryResults = await competitorDiscovery(
-    business_name,
-    business_type,
-    location
-  );
-  
-  // Select only TOP 2 competitors (matching competitor format)
-  const top2Competitors = discoveryResults.competitors.slice(0, 2);
-  console.log(`   Selected top 2 competitors for analysis`);
-  
-  // Phase 2: Deep analysis of top 2 only
-  console.log('\n🔍 Phase 2: Analyzing Top 2 Competitors');
-  const competitorAnalysis = await analyzeTop2Competitors(
-    top2Competitors,
-    business_type,
-    location,
-    discoveryResults.apiKeys
-  );
-  
-  // Phase 3: Analyze target business
-  console.log('\n🎯 Phase 3: Analyzing Target Business');
-  const brandAnalysis = analyzeBrand(
-    business_name,
-    website,
-    discoveryResults.targetMentions,
-    discoveryResults.overall_score
-  );
-  
-  // Phase 4: Generate gaps
-  console.log('\n⚖️  Phase 4: Gap Analysis');
-  const content_gaps = generateDetailedGaps(
-    brandAnalysis,
-    competitorAnalysis
-  );
-  
-  // Phase 5: Recommendations
-  console.log('\n💡 Phase 5: Recommendations');
-  const priority_actions = generatePriorityActions(
-    content_gaps,
-    discoveryResults.overall_score
-  );
-  
-  // Phase 6: Additional sections
-  console.log('\n📅 Phase 6: Implementation Timeline');
-  const implementation_timeline = generateImplementationTimeline(priority_actions);
-  
-  console.log('\n📍 Phase 7: Citation Opportunities');
-  const citation_opportunities = generateCitationOpportunities(business_type, location);
-  
-  console.log('\n🎓 Phase 8: AI Knowledge Scores');
-  const ai_knowledge_scores = generateAIKnowledgeScores(discoveryResults.platform_scores);
-  
-  return {
-    overall_score: discoveryResults.overall_score,
-    platform_scores: discoveryResults.platform_scores,
-    brand_strengths: brandAnalysis.strengths,
-    brand_weaknesses: brandAnalysis.weaknesses,
-    top_competitors: competitorAnalysis.top_competitors_formatted,
-    content_gaps,
-    priority_actions,
-    implementation_timeline,
-    citation_opportunities,
-    ai_knowledge_scores,
-    query_count: discoveryResults.query_count,
-    total_cost: discoveryResults.total_cost + (competitorAnalysis.total_cost || 0)
-  };
+  try {
+    // Phase 1: Discover competitors
+    console.log('[PHASE 1] Competitor Discovery');
+    const discoveryResults = await competitorDiscovery(
+      business_name,
+      business_type,
+      location
+    );
+    
+    // Select only TOP 2 competitors
+    const top2Competitors = discoveryResults.competitors.slice(0, 2);
+    console.log('[INFO] Selected top 2 competitors for analysis');
+    
+    // Phase 2: Deep analysis of top 2
+    console.log('[PHASE 2] Analyzing Top 2 Competitors');
+    const competitorAnalysis = await analyzeTop2Competitors(
+      top2Competitors,
+      business_type,
+      location,
+      discoveryResults.apiKeys
+    );
+    
+    // Phase 3: Analyze target business
+    console.log('[PHASE 3] Analyzing Target Business');
+    const brandAnalysis = analyzeBrand(
+      business_name,
+      website,
+      discoveryResults.targetMentions,
+      discoveryResults.overall_score
+    );
+    
+    // Phase 4: Generate gaps
+    console.log('[PHASE 4] Gap Analysis');
+    const content_gaps = generateDetailedGaps(
+      brandAnalysis,
+      competitorAnalysis
+    );
+    
+    // Phase 5: Recommendations
+    console.log('[PHASE 5] Recommendations');
+    const priority_actions = generatePriorityActions(
+      content_gaps,
+      discoveryResults.overall_score
+    );
+    
+    // Phase 6: Additional sections
+    console.log('[PHASE 6] Implementation Timeline');
+    const implementation_timeline = generateImplementationTimeline(priority_actions);
+    
+    console.log('[PHASE 7] Citation Opportunities');
+    const citation_opportunities = generateCitationOpportunities(business_type, location);
+    
+    console.log('[PHASE 8] AI Knowledge Scores');
+    const ai_knowledge_scores = generateAIKnowledgeScores(discoveryResults.platform_scores);
+    
+    return {
+      overall_score: discoveryResults.overall_score,
+      platform_scores: discoveryResults.platform_scores,
+      brand_strengths: brandAnalysis.strengths,
+      brand_weaknesses: brandAnalysis.weaknesses,
+      top_competitors: competitorAnalysis.top_competitors_formatted || [],
+      content_gaps,
+      priority_actions,
+      implementation_timeline,
+      citation_opportunities,
+      ai_knowledge_scores,
+      query_count: discoveryResults.query_count,
+      total_cost: discoveryResults.total_cost + (competitorAnalysis.total_cost || 0)
+    };
+  } catch (error) {
+    console.error('[ERROR] Report generation failed:', error.message);
+    throw error;
+  }
 }
 
 /**
- * Competitor discovery
+ * Competitor discovery phase
  */
 async function competitorDiscovery(business_name, business_type, location) {
   const apiKeys = {
@@ -261,13 +318,12 @@ async function competitorDiscovery(business_name, business_type, location) {
     perplexity: process.env.VITE_PERPLEXITY_API_KEY || process.env.PERPLEXITY_API_KEY
   };
   
+  // Reduced query count to avoid timeout (5 instead of 8)
   const queries = [
     `List the top 5 ${business_type} businesses in ${location} with their names`,
     `What are the best ${business_type} companies in ${location}? Give me specific names`,
     `Recommend ${business_type} services in ${location} by name`,
     `Compare the leading ${business_type} providers in ${location}`,
-    `${business_type} ${location} - top rated options`,
-    `Find ${business_type} near me in ${location} - list business names`,
     `Tell me about ${business_name} and compare to other ${business_type} in ${location}`
   ];
   
@@ -280,12 +336,12 @@ async function competitorDiscovery(business_name, business_type, location) {
   
   for (const platform of platforms) {
     if (!apiKeys[platform]) {
-      console.warn(`   ⚠️  Skipping ${platform} - no API key`);
+      console.warn(`[WARN] Skipping ${platform} - no API key`);
       platformScores.push({ platform, score: 0, mention_count: 0, cost: 0 });
       continue;
     }
     
-    console.log(`   Querying ${platform}...`);
+    console.log(`[INFO] Querying ${platform}`);
     let platformMentions = 0;
     let platformCost = 0;
     
@@ -308,10 +364,11 @@ async function competitorDiscovery(business_name, business_type, location) {
           targetMentions++;
         }
         
-        await new Promise(resolve => setTimeout(resolve, 300));
+        // Rate limiting
+        await new Promise(resolve => setTimeout(resolve, 500));
         
       } catch (error) {
-        console.error(`   ❌ Error querying ${platform}:`, error.message);
+        console.error(`[ERROR] Query failed for ${platform}:`, error.message);
       }
     }
     
@@ -344,7 +401,7 @@ async function competitorDiscovery(business_name, business_type, location) {
 }
 
 /**
- * Analyze only top 2 competitors
+ * Analyze top 2 competitors
  */
 async function analyzeTop2Competitors(top2Competitors, business_type, location, apiKeys) {
   if (top2Competitors.length === 0) {
@@ -382,11 +439,10 @@ Provide 3-5 specific strengths as bullet points. Be concise and actionable.`;
       await new Promise(resolve => setTimeout(resolve, 1000));
       
     } catch (error) {
-      console.error(`   ❌ Error analyzing ${competitor.name}:`, error.message);
+      console.error(`[ERROR] Analyzing ${competitor.name}:`, error.message);
     }
   }
   
-  // Format for display (matching competitor format)
   const top_competitors_formatted = analyses.map(a => ({
     name: a.competitor,
     strengths: a.strengths,
@@ -397,15 +453,15 @@ Provide 3-5 specific strengths as bullet points. Be concise and actionable.`;
 }
 
 /**
- * Extract competitor strengths
+ * Extract competitor strengths from analysis
  */
 function extractCompetitorStrengths(analysisText) {
   const strengths = [];
   const lines = analysisText.split('\n');
   
   for (const line of lines) {
-    if (/^[\d\-\*•]/.test(line.trim()) && line.length > 20 && line.length < 200) {
-      const cleaned = line.replace(/^[\d\-\*•\)\.:\s]+/, '').trim();
+    if (/^[\d\-\*\u2022]/.test(line.trim()) && line.length > 20 && line.length < 200) {
+      const cleaned = line.replace(/^[\d\-\*\u2022\)\.:\s]+/, '').trim();
       if (cleaned) {
         strengths.push(cleaned);
       }
@@ -453,16 +509,15 @@ function analyzeBrand(business_name, website, targetMentions, overall_score) {
 }
 
 /**
- * Generate detailed gaps
+ * Generate detailed content gaps
  */
 function generateDetailedGaps(brandAnalysis, competitorAnalysis) {
   const gaps = [];
   const timestamp = Date.now();
   let gapId = 1;
   
-  // Extract common competitor strengths
-  const allStrengths = competitorAnalysis.analyses
-    .flatMap(a => a.strengths.map(s => s.toLowerCase()));
+  const allStrengths = (competitorAnalysis.analyses || [])
+    .flatMap(a => (a.strengths || []).map(s => s.toLowerCase()));
   
   const hasReviewStrength = allStrengths.some(s => 
     s.includes('review') || s.includes('rating') || s.includes('testimonial'));
@@ -563,13 +618,12 @@ function generateDetailedGaps(brandAnalysis, competitorAnalysis) {
 }
 
 /**
- * Generate priority actions
+ * Generate priority actions from gaps
  */
 function generatePriorityActions(content_gaps, overall_score) {
   const actions = [];
   const timestamp = Date.now();
   
-  // Convert critical gaps to high-priority actions
   const criticalGaps = content_gaps.filter(g => g.severity === 'critical');
   
   criticalGaps.forEach((gap, index) => {
@@ -584,7 +638,6 @@ function generatePriorityActions(content_gaps, overall_score) {
     });
   });
   
-  // Add quick wins for low scores
   if (overall_score < 30) {
     actions.push({
       id: `action-${timestamp}-quickwin`,
@@ -695,26 +748,39 @@ function generateCitationOpportunities(business_type, location) {
  * Generate AI knowledge scores
  */
 function generateAIKnowledgeScores(platform_scores) {
+  const platforms = platform_scores.map(p => ({
+    platform: p.platform,
+    score: p.score,
+    knowledge_level: p.score >= 70 ? 'High' : p.score >= 40 ? 'Moderate' : 'Low',
+    recommendation: p.score >= 70 
+      ? 'Maintain and optimize existing presence'
+      : p.score >= 40
+      ? 'Strengthen content and review signals'
+      : 'Build foundational visibility from scratch'
+  }));
+
+  const overallKnowledge = platform_scores.length > 0
+    ? platform_scores.reduce((sum, p) => sum + p.score, 0) / platform_scores.length
+    : 0;
+
+  const bestPlatform = platform_scores.reduce((best, current) => 
+    current.score > best.score ? current : best, platform_scores[0] || { platform: 'none', score: 0 });
+
   return {
-    platforms: platform_scores.map(p => ({
-      platform: p.platform,
-      score: p.score,
-      knowledge_level: p.score >= 70 ? 'High' : p.score >= 40 ? 'Moderate' : 'Low',
-      recommendation: p.score >= 70 
-        ? 'Maintain and optimize existing presence'
-        : p.score >= 40
-        ? 'Strengthen content and review signals'
-        : 'Build foundational visibility from scratch'
-    })),
-    overall_knowledge: platform_scores.reduce((sum, p) => sum + p.score, 0) / platform_scores.length,
-    best_platform: platform_scores.reduce((best, current) => 
-      current.score > best.score ? current : best, platform_scores[0]),
-    needs_improvement: platform_scores.filter(p => p.score < 50)
+    platforms,
+    overall_knowledge: overallKnowledge,
+    best_platform: {
+      platform: bestPlatform.platform,
+      score: bestPlatform.score,
+      knowledge_level: bestPlatform.score >= 70 ? 'High' : bestPlatform.score >= 40 ? 'Moderate' : 'Low',
+      recommendation: ''
+    },
+    needs_improvement: platforms.filter(p => p.score < 50)
   };
 }
 
 /**
- * Extract competitors from responses
+ * Extract competitors from AI responses
  */
 function extractCompetitorsAggressive(responses, targetBusinessName) {
   const competitorCounts = {};
@@ -725,7 +791,6 @@ function extractCompetitorsAggressive(responses, targetBusinessName) {
     
     const text = response.text;
     
-    // Multiple extraction patterns
     const patterns = [
       /(?:^|\n)\s*[\d]+[\.)]\s*\*?\*?([A-Z][A-Za-z0-9\s&''\-\.]+)\*?\*?/gm,
       /\*\*([A-Z][A-Za-z0-9\s&''\-\.]+)\*\*/g,
@@ -761,7 +826,7 @@ function isValidBusinessName(text, targetLower) {
 }
 
 /**
- * Execute query
+ * Execute AI platform query
  */
 async function executeQuery(platform, query, apiKey, context) {
   const systemPrompt = `You are helping someone find ${context.business_type} businesses in ${context.location}.
@@ -779,6 +844,9 @@ Format them clearly (numbered list or bold).`;
   }
 }
 
+/**
+ * Query ChatGPT API
+ */
 async function queryChatGPT(query, systemPrompt, apiKey) {
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -798,7 +866,8 @@ async function queryChatGPT(query, systemPrompt, apiKey) {
   });
   
   if (!response.ok) {
-    throw new Error(`ChatGPT API error: ${response.statusText}`);
+    const errorText = await response.text();
+    throw new Error(`ChatGPT API error: ${response.status} - ${errorText}`);
   }
   
   const data = await response.json();
@@ -809,6 +878,9 @@ async function queryChatGPT(query, systemPrompt, apiKey) {
   return { text, cost, tokens };
 }
 
+/**
+ * Query Claude API
+ */
 async function queryClaude(query, systemPrompt, apiKey) {
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -826,7 +898,8 @@ async function queryClaude(query, systemPrompt, apiKey) {
   });
   
   if (!response.ok) {
-    throw new Error(`Claude API error: ${response.statusText}`);
+    const errorText = await response.text();
+    throw new Error(`Claude API error: ${response.status} - ${errorText}`);
   }
   
   const data = await response.json();
@@ -838,6 +911,9 @@ async function queryClaude(query, systemPrompt, apiKey) {
   return { text, cost, tokens: inputTokens + outputTokens };
 }
 
+/**
+ * Query Gemini API
+ */
 async function queryGemini(query, systemPrompt, apiKey) {
   const fullPrompt = `${systemPrompt}\n\n${query}`;
   
@@ -854,7 +930,8 @@ async function queryGemini(query, systemPrompt, apiKey) {
   );
   
   if (!response.ok) {
-    throw new Error(`Gemini API error: ${response.statusText}`);
+    const errorText = await response.text();
+    throw new Error(`Gemini API error: ${response.status} - ${errorText}`);
   }
   
   const data = await response.json();
@@ -865,6 +942,9 @@ async function queryGemini(query, systemPrompt, apiKey) {
   return { text, cost, tokens: estimatedTokens };
 }
 
+/**
+ * Query Perplexity API
+ */
 async function queryPerplexity(query, systemPrompt, apiKey) {
   const response = await fetch('https://api.perplexity.ai/chat/completions', {
     method: 'POST',
@@ -884,7 +964,8 @@ async function queryPerplexity(query, systemPrompt, apiKey) {
   });
   
   if (!response.ok) {
-    throw new Error(`Perplexity API error: ${response.statusText}`);
+    const errorText = await response.text();
+    throw new Error(`Perplexity API error: ${response.status} - ${errorText}`);
   }
   
   const data = await response.json();
