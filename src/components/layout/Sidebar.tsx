@@ -4,7 +4,8 @@
 import {
   AlertTriangle,
   Brain,
-  Database, // <- ADD THIS LINE
+  Database,
+  FileBarChart, // <- ADD THIS LINE
   FileText,
   Globe,
   Image,
@@ -65,7 +66,23 @@ const settingsItems: NavItem[] = [
   { id: 'settings', label: 'General', icon: Settings },
   { id: 'customers', label: 'Customers', icon: Users, allowedRoles: ['manager', 'admin'] },
   { id: 'users', label: 'Users', icon: UserCheck, requiredRole: 'admin' },
-   {
+  
+  { 
+    id: 'ai-report-generator', 
+    label: 'AI Report Generator', 
+    icon: FileBarChart, 
+    requiredRole: 'admin',
+    badge: 'NEW',
+    badgeVariant: 'gradient'
+  },
+  { 
+    id: 'ai-report-history', 
+    label: 'Report History', 
+    icon: FileText, 
+    requiredRole: 'admin'
+  },
+  
+  {
     id: 'google-profile',
     label: 'Google Profile',
     icon: Link, // or Globe, or CheckCircle

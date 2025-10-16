@@ -13,6 +13,8 @@ import { Sidebar } from './components/layout/Sidebar';
 // Page components
 import { AdminSetup } from './components/pages/AdminSetup';
 import { AIInsights } from './components/pages/AIInsights';
+import { AIReportGenerator } from './components/pages/AIReportGenerator';
+import { AIReportHistory } from './components/pages/AIReportHistory';
 import { Alerts } from './components/pages/Alerts';
 import { Automations } from './components/pages/Automations';
 import { CommandCenter } from './components/pages/CommandCenter';
@@ -299,6 +301,18 @@ function App() {
     </div>
   );
   break;
+  
+  case 'ai-report-generator':
+        component = <AIReportGenerator />;
+        break;
+      case 'ai-report-history':
+        component = <AIReportHistory />;
+        break;
+      case 'public-report-share':
+        // This route would need token from URL params
+        // For now, just show a placeholder
+        component = <div>Public Share Page - Token needed from URL</div>;
+        break;
 
 case 'mock-data':
   component = <MockDataManager />;

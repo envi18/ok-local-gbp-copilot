@@ -1,5 +1,5 @@
 // src/config/routes.ts
-// Route configuration with Command Center added, Reports removed
+// Route configuration with AI Report Generator added
 
 import type { ProductName } from '../types/products';
 
@@ -121,10 +121,34 @@ export const ROUTE_CONFIG: Record<string, RouteConfig> = {
     description: 'Manage customer accounts and product access'
   },
 
-    'google-profile': {
+  // NEW: AI Report Generator routes (Admin only)
+  'ai-report-generator': {
+    section: 'ai-report-generator',
+    label: 'AI Report Generator',
+    requiredRole: 'admin',
+    description: 'Generate AI visibility reports for any business (prospects, competitors, clients)',
+    isPublic: false
+  },
+
+  'ai-report-history': {
+    section: 'ai-report-history',
+    label: 'Report History',
+    requiredRole: 'admin',
+    description: 'View all generated AI visibility reports with export options',
+    isPublic: false
+  },
+
+  'public-report-share': {
+    section: 'public-report-share',
+    label: 'Shared Report',
+    description: 'Public AI visibility report (accessible via share link)',
+    isPublic: true
+  },
+
+  'google-profile': {
     section: 'google-profile',
     label: 'Google Profile',
-    requiredRole: 'user', // Available to all users, or change to 'admin' for admin-only
+    requiredRole: 'user',
     description: 'Interactive mock Google Business Profile interface with automation testing'
   },
 
@@ -135,7 +159,7 @@ export const ROUTE_CONFIG: Record<string, RouteConfig> = {
     description: 'View and manage mock Google Business data for development'
   },
 
-  // NEW: Command Center - Admin only
+  // Command Center - Admin only
   'command-center': {
     section: 'command-center',
     label: 'Command Center',
