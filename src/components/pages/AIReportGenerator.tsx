@@ -6,7 +6,7 @@ import React, { useEffect, useState } from 'react';
 import { ExternalReportService } from '../../lib/externalReportService';
 import { supabase } from '../../lib/supabase';
 import type { ExternalReport, GenerateExternalReportRequest } from '../../types/externalReport';
-import { AIReportDisplay } from '../ui/AIReportDisplay';
+import { EnhancedAIReportDisplay } from '../ui/EnhancedAIReportDisplay';
 import { ReportGenerationForm } from '../ui/ReportGenerationForm';
 import { ReportProgressIndicator } from '../ui/ReportProgressIndicator';
 
@@ -286,10 +286,10 @@ Best,
             </div>
           </div>
 
-          {/* Report Display */}
-          {report.report_data && (
-            <AIReportDisplay report={report.report_data} />
-          )}
+        {/* Report Display */}
+{report && (
+  <EnhancedAIReportDisplay report={report} />
+)}
 
           {/* Generate Another */}
           <div className="flex justify-center">
