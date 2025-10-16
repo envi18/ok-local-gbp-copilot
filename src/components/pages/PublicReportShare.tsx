@@ -23,6 +23,11 @@ export const PublicReportShare: React.FC<PublicReportShareProps> = ({ token: pro
 
   const token = propToken || getTokenFromUrl();
 
+  // Force light theme for public share page
+  useEffect(() => {
+    document.documentElement.classList.remove('dark');
+  }, []);
+
   useEffect(() => {
     loadReport();
   }, [token]);
