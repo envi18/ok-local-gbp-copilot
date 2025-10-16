@@ -26,18 +26,11 @@ export const ReportGenerationForm: React.FC<ReportGenerationFormProps> = ({
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
 
+    // Only website URL is required
     if (!targetWebsite.trim()) {
       newErrors.targetWebsite = 'Target website is required';
     } else if (!isValidUrl(targetWebsite)) {
       newErrors.targetWebsite = 'Please enter a valid URL (e.g., example.com)';
-    }
-
-    if (!businessType.trim()) {
-      newErrors.businessType = 'Business type is required';
-    }
-
-    if (!businessLocation.trim()) {
-      newErrors.businessLocation = 'Location is required';
     }
 
     setErrors(newErrors);
@@ -70,8 +63,8 @@ export const ReportGenerationForm: React.FC<ReportGenerationFormProps> = ({
     const request: GenerateExternalReportRequest = {
       target_website: normalizeUrl(targetWebsite),
       business_name: businessName.trim() || undefined,
-      business_type: businessType.trim(),
-      business_location: businessLocation.trim(),
+      business_type: businessType.trim() || 'business', // Default fallback
+      business_location: businessLocation.trim() || 'Unknown', // Default fallback
       competitor_websites: validCompetitors.length > 0 ? validCompetitors : undefined
     };
 
@@ -138,47 +131,31 @@ export const ReportGenerationForm: React.FC<ReportGenerationFormProps> = ({
       {/* Business Type */}
       <div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-          Business Type / Industry *
+          Business Type / Industry
         </label>
         <input
           type="text"
           value={businessType}
           onChange={(e) => setBusinessType(e.target.value)}
-          placeholder="e.g., restaurant, coffee shop, plumber, landscaping"
-          className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white ${
-            errors.businessType ? 'border-red-500' : 'border-gray-300'
-          }`}
+          placeholder="e.g., restaurant, coffee shop, plumber, landscaping (optional)"
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
           disabled={isGenerating}
         />
-        {errors.businessType && (
-          <div className="flex items-center gap-1 mt-1 text-sm text-red-600">
-            <AlertCircle size={14} />
-            <span>{errors.businessType}</span>
-          </div>
-        )}
       </div>
 
       {/* Location */}
       <div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-          Location (City, State) *
+          Location (City, State)
         </label>
         <input
           type="text"
           value={businessLocation}
           onChange={(e) => setBusinessLocation(e.target.value)}
-          placeholder="e.g., Seattle, WA"
-          className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white ${
-            errors.businessLocation ? 'border-red-500' : 'border-gray-300'
-          }`}
+          placeholder="e.g., Seattle, WA (optional)"
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
           disabled={isGenerating}
         />
-        {errors.businessLocation && (
-          <div className="flex items-center gap-1 mt-1 text-sm text-red-600">
-            <AlertCircle size={14} />
-            <span>{errors.businessLocation}</span>
-          </div>
-        )}
       </div>
 
       {/* Competitor Websites */}

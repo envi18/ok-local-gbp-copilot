@@ -67,19 +67,13 @@ const settingsItems: NavItem[] = [
   { id: 'customers', label: 'Customers', icon: Users, allowedRoles: ['manager', 'admin'] },
   { id: 'users', label: 'Users', icon: UserCheck, requiredRole: 'admin' },
   
-  { 
-    id: 'ai-report-generator', 
-    label: 'AI Report Generator', 
+ { 
+    id: 'ai-reports', 
+    label: 'AI Reports', 
     icon: FileBarChart, 
     requiredRole: 'admin',
     badge: 'NEW',
     badgeVariant: 'gradient'
-  },
-  { 
-    id: 'ai-report-history', 
-    label: 'Report History', 
-    icon: FileText, 
-    requiredRole: 'admin'
   },
   
   {
