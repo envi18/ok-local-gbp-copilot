@@ -28,7 +28,7 @@ export interface ExternalReport {
   
   // Report data
   report_data: AIVisibilityReport | null;
-  content_gap_analysis: ContentGapAnalysis | null;
+  content_gap_analysis: EnhancedContentGapAnalysis | null;
   ai_platform_scores: Record<string, number> | null;
   competitor_analysis: CompetitorAnalysis | null;
   recommendations: PriorityAction[] | null;
@@ -71,9 +71,82 @@ export interface ExternalReportWithDetails extends ExternalReport {
 }
 
 /**
- * Content Gap Analysis Structure
+ * Primary Brand Analysis
  */
-export interface ContentGapAnalysis {
+export interface PrimaryBrandAnalysis {
+  name: string;
+  website: string;
+  strengths: string[];
+  weaknesses: string[];
+  ai_visibility_score: number;
+}
+
+/**
+ * Top Competitor
+ */
+export interface TopCompetitor {
+  name: string;
+  strengths: string[];
+  mention_frequency: number;
+}
+
+/**
+ * Implementation Timeline
+ */
+export interface ImplementationTimeline {
+  immediate?: Array<{
+    title: string;
+    duration: string;
+    priority: string;
+  }>;
+  short_term?: Array<{
+    title: string;
+    duration: string;
+    priority: string;
+  }>;
+  long_term?: Array<{
+    title: string;
+    duration: string;
+    priority: string;
+  }>;
+}
+
+/**
+ * Citation Opportunity
+ */
+export interface CitationOpportunity {
+  platform: string;
+  priority: 'critical' | 'high' | 'medium' | 'low';
+  status: 'required' | 'recommended' | 'opportunity';
+  description: string;
+}
+
+/**
+ * AI Knowledge Score Platform
+ */
+export interface AIKnowledgePlatform {
+  platform: string;
+  score: number;
+  knowledge_level: 'High' | 'Moderate' | 'Low';
+  recommendation: string;
+}
+
+/**
+ * AI Knowledge Scores
+ */
+export interface AIKnowledgeScores {
+  platforms: AIKnowledgePlatform[];
+  overall_knowledge: number;
+  best_platform: AIKnowledgePlatform;
+  needs_improvement: AIKnowledgePlatform[];
+}
+
+/**
+ * Enhanced Content Gap Analysis Structure (matching competitor format)
+ */
+export interface EnhancedContentGapAnalysis {
+  primary_brand: PrimaryBrandAnalysis;
+  top_competitors: TopCompetitor[];
   structural_gaps: ContentGap[];
   thematic_gaps: ContentGap[];
   critical_topic_gaps: ContentGap[];
@@ -84,6 +157,9 @@ export interface ContentGapAnalysis {
     significant: number;
     moderate: number;
   };
+  implementation_timeline?: ImplementationTimeline;
+  citation_opportunities?: CitationOpportunity[];
+  ai_knowledge_scores?: AIKnowledgeScores;
 }
 
 /**

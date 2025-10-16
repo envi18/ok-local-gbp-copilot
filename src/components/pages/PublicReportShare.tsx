@@ -1,7 +1,19 @@
 // src/components/pages/PublicReportShare.tsx
-// Enhanced public-facing page for shared AI visibility reports
+// Public report display matching competitor format exactly
 
-import { AlertCircle, AlertTriangle, Award, BarChart3, Calendar, ExternalLink, Lightbulb, Loader, Target, TrendingUp } from 'lucide-react';
+import {
+  AlertCircle,
+  AlertTriangle,
+  BarChart3,
+  Calendar,
+  CheckCircle,
+  ExternalLink,
+  Lightbulb,
+  Loader,
+  MapPin,
+  Target,
+  TrendingUp
+} from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { ExternalReportService } from '../../lib/externalReportService';
 import type { ExternalReport } from '../../types/externalReport';
@@ -23,7 +35,7 @@ export const PublicReportShare: React.FC<PublicReportShareProps> = ({ token: pro
 
   const token = propToken || getTokenFromUrl();
 
-  // Force light theme for public share page
+  // Force light theme
   useEffect(() => {
     document.documentElement.classList.remove('dark');
   }, []);
@@ -54,10 +66,10 @@ export const PublicReportShare: React.FC<PublicReportShareProps> = ({ token: pro
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
           <Loader size={48} className="text-blue-500 animate-spin mx-auto mb-4" />
-          <p className="text-gray-600 dark:text-gray-400">Loading report...</p>
+          <p className="text-gray-600">Loading report...</p>
         </div>
       </div>
     );
@@ -65,68 +77,56 @@ export const PublicReportShare: React.FC<PublicReportShareProps> = ({ token: pro
 
   if (error || !report) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center max-w-md mx-4">
           <AlertCircle size={64} className="text-red-500 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-            Report Not Found
-          </h1>
-          <p className="text-gray-600 dark:text-gray-400">{error}</p>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Report Not Found</h2>
+          <p className="text-gray-600">{error || 'This report could not be loaded.'}</p>
         </div>
       </div>
     );
   }
 
-  const reportData = report.report_data;
-  const overallScore = reportData?.overall_score || 0;
-  const platformScores = report.ai_platform_scores || {};
-  const contentGaps = report.content_gap_analysis;
+  const contentGaps = report.content_gap_analysis || {} as any;
+  const primaryBrand = contentGaps.primary_brand || {} as any;
+  const topCompetitors = (contentGaps.top_competitors || []) as any[];
   const recommendations = report.recommendations || [];
-
-  const getGradeColor = (score: number): string => {
-    if (score >= 90) return 'from-green-500 to-emerald-600';
-    if (score >= 80) return 'from-blue-500 to-cyan-600';
-    if (score >= 70) return 'from-yellow-500 to-orange-500';
-    if (score >= 60) return 'from-orange-500 to-red-500';
-    return 'from-red-600 to-red-700';
-  };
+  const platformScores = report.ai_platform_scores || {};
+  const implementationTimeline = (contentGaps.implementation_timeline || {}) as any;
+  const citationOpportunities = (contentGaps.citation_opportunities || []) as any[];
+  const aiKnowledgeScores = (contentGaps.ai_knowledge_scores || {}) as any;
+  
+  const overallScore = report.report_data?.overall_score || 0;
 
   const getGrade = (score: number): string => {
     if (score >= 90) return 'A+';
-    if (score >= 85) return 'A';
-    if (score >= 80) return 'B+';
-    if (score >= 75) return 'B';
-    if (score >= 70) return 'C+';
-    if (score >= 65) return 'C';
-    if (score >= 60) return 'D';
+    if (score >= 80) return 'A';
+    if (score >= 70) return 'B';
+    if (score >= 60) return 'C';
+    if (score >= 50) return 'D';
     return 'F';
   };
 
-  const getSeverityIcon = (severity: string) => {
-    switch (severity?.toLowerCase()) {
-      case 'critical':
-        return <AlertTriangle className="text-red-500" size={20} />;
-      case 'significant':
-        return <AlertTriangle className="text-orange-500" size={20} />;
-      default:
-        return <AlertCircle className="text-yellow-500" size={20} />;
-    }
+  const getGradeColor = (score: number): string => {
+    if (score >= 80) return 'from-green-500 to-green-600';
+    if (score >= 60) return 'from-yellow-500 to-yellow-600';
+    return 'from-red-500 to-red-600';
   };
 
-  const getSeverityBadge = (severity: string) => {
+  const getSeverityColor = (severity: string): string => {
     const colors: Record<string, string> = {
-      critical: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
-      significant: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300',
-      moderate: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
+      critical: 'bg-red-100 text-red-800 border-red-200',
+      significant: 'bg-orange-100 text-orange-800 border-orange-200',
+      moderate: 'bg-yellow-100 text-yellow-800 border-yellow-200'
     };
     return colors[severity?.toLowerCase()] || colors.moderate;
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-b border-gray-200 dark:border-gray-800 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-6 py-6">
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-10 shadow-sm">
+        <div className="max-w-6xl mx-auto px-6 py-6">
           <div className="flex items-start justify-between">
             <div className="flex-1">
               <div className="flex items-center gap-3 mb-2">
@@ -134,18 +134,16 @@ export const PublicReportShare: React.FC<PublicReportShareProps> = ({ token: pro
                   <BarChart3 className="text-white" size={24} />
                 </div>
                 <div>
-                  <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                    {report.business_name || report.target_website}
+                  <h1 className="text-2xl font-bold text-gray-900">
+                    {primaryBrand.name || report.business_name || report.target_website}
                   </h1>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    AI Visibility Analysis Report
-                  </p>
+                  <p className="text-sm text-gray-600">AI Visibility Analysis Report</p>
                 </div>
               </div>
-              <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
+              <div className="flex items-center gap-4 text-sm text-gray-600">
                 <span className="flex items-center gap-1">
                   <ExternalLink size={14} />
-                  {report.target_website}
+                  {primaryBrand.website || report.target_website}
                 </span>
                 <span>•</span>
                 <span>Generated {new Date(report.created_at).toLocaleDateString()}</span>
@@ -164,83 +162,109 @@ export const PublicReportShare: React.FC<PublicReportShareProps> = ({ token: pro
       </div>
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
-        {/* Executive Summary */}
-        <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200 dark:border-gray-800 p-8 shadow-xl">
+      <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
+        
+        {/* Primary Brand Overview */}
+        <div className="bg-white rounded-xl border border-gray-200 p-8 shadow-sm">
           <div className="flex items-center gap-3 mb-6">
             <TrendingUp className="text-blue-500" size={28} />
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-              Executive Summary
+            <h2 className="text-2xl font-bold text-gray-900">
+              {primaryBrand.name || 'Your Business'}
             </h2>
           </div>
-          <p className="text-gray-700 dark:text-gray-300 text-lg leading-relaxed mb-6">
-            This comprehensive AI visibility analysis evaluates how <strong>{report.business_name || 'this business'}</strong> appears 
-            across major AI platforms including ChatGPT, Claude, Gemini, and Perplexity. The overall score of <strong>{overallScore}/100</strong> indicates 
-            {overallScore >= 80 ? ' strong visibility' : overallScore >= 60 ? ' moderate visibility with room for improvement' : ' significant opportunities for improvement'} 
-            in AI-powered search results.
-          </p>
+          
+          {/* Strengths */}
+          {primaryBrand.strengths && primaryBrand.strengths.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                <CheckCircle className="text-green-500" size={20} />
+                Strengths
+              </h3>
+              <ul className="space-y-2">
+                {primaryBrand.strengths.map((strength: string, index: number) => (
+                  <li key={index} className="flex items-start gap-2 text-gray-700">
+                    <span className="text-green-500 mt-1">•</span>
+                    <span>{strength}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
-          {/* Key Metrics Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-xl p-4 border border-blue-200 dark:border-blue-800">
-              <div className="text-sm text-blue-700 dark:text-blue-300 font-medium mb-1">Overall Score</div>
-              <div className="text-3xl font-bold text-blue-900 dark:text-blue-100">{overallScore}</div>
+          {/* Weaknesses */}
+          {primaryBrand.weaknesses && primaryBrand.weaknesses.length > 0 && (
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                <AlertTriangle className="text-orange-500" size={20} />
+                Areas for Improvement
+              </h3>
+              <ul className="space-y-2">
+                {primaryBrand.weaknesses.map((weakness: string, index: number) => (
+                  <li key={index} className="flex items-start gap-2 text-gray-700">
+                    <span className="text-orange-500 mt-1">•</span>
+                    <span>{weakness}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
-            <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-xl p-4 border border-purple-200 dark:border-purple-800">
-              <div className="text-sm text-purple-700 dark:text-purple-300 font-medium mb-1">Platforms Analyzed</div>
-              <div className="text-3xl font-bold text-purple-900 dark:text-purple-100">{Object.keys(platformScores).length}</div>
-            </div>
-            <div className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-800/20 rounded-xl p-4 border border-orange-200 dark:border-orange-800">
-              <div className="text-sm text-orange-700 dark:text-orange-300 font-medium mb-1">Content Gaps</div>
-              <div className="text-3xl font-bold text-orange-900 dark:text-orange-100">{contentGaps?.total_gaps || 0}</div>
-            </div>
-            <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-xl p-4 border border-green-200 dark:border-green-800">
-              <div className="text-sm text-green-700 dark:text-green-300 font-medium mb-1">Recommendations</div>
-              <div className="text-3xl font-bold text-green-900 dark:text-green-100">{recommendations.length}</div>
-            </div>
-          </div>
+          )}
         </div>
 
-        {/* AI Platform Scores */}
-        <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200 dark:border-gray-800 p-8 shadow-xl">
+        {/* Top Competitors */}
+        {topCompetitors.length > 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 p-8 shadow-sm">
+            <div className="flex items-center gap-3 mb-6">
+              <Target className="text-purple-500" size={28} />
+              <h2 className="text-2xl font-bold text-gray-900">Top Competitors</h2>
+            </div>
+            
+            <div className="space-y-6">
+              {topCompetitors.map((competitor: any, index: number) => (
+                <div key={index} className="border-l-4 border-purple-500 pl-6 py-2">
+                  <h3 className="text-xl font-semibold text-gray-900 mb-3">
+                    {competitor.name}
+                  </h3>
+                  {competitor.strengths && competitor.strengths.length > 0 && (
+                    <ul className="space-y-2">
+                      {competitor.strengths.map((strength: string, sIndex: number) => (
+                        <li key={sIndex} className="flex items-start gap-2 text-gray-700">
+                          <span className="text-purple-500 mt-1">•</span>
+                          <span>{strength}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* AI Platform Performance */}
+        <div className="bg-white rounded-xl border border-gray-200 p-8 shadow-sm">
           <div className="flex items-center gap-3 mb-6">
-            <BarChart3 className="text-purple-500" size={28} />
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-              AI Platform Performance
-            </h2>
+            <BarChart3 className="text-blue-500" size={28} />
+            <h2 className="text-2xl font-bold text-gray-900">AI Platform Performance</h2>
           </div>
           <div className="space-y-5">
             {Object.entries(platformScores).map(([platform, score]) => {
               const numScore = typeof score === 'number' ? score : 0;
               return (
-                <div key={platform} className="group">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-                        <span className="text-white font-bold text-sm uppercase">{platform.substring(0, 2)}</span>
-                      </div>
-                      <div>
-                        <span className="text-lg font-semibold text-gray-900 dark:text-white capitalize">
-                          {platform}
-                        </span>
-                        <div className="text-xs text-gray-500 dark:text-gray-400">
-                          {numScore >= 80 ? 'Excellent visibility' : numScore >= 60 ? 'Good visibility' : 'Needs improvement'}
-                        </div>
-                      </div>
-                    </div>
-                    <span className="text-2xl font-bold text-gray-900 dark:text-white">
-                      {numScore}
-                      <span className="text-sm text-gray-500 dark:text-gray-400">/100</span>
+                <div key={platform}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-gray-700 capitalize">
+                      {platform}
                     </span>
+                    <span className="text-sm font-bold text-gray-900">{numScore}/100</span>
                   </div>
-                  <div className="relative h-4 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                  <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
                     <div
-                      className={`absolute inset-y-0 left-0 rounded-full transition-all duration-1000 ${
+                      className={`h-full transition-all ${
                         numScore >= 80
-                          ? 'bg-gradient-to-r from-green-500 to-emerald-600'
+                          ? 'bg-green-500'
                           : numScore >= 60
-                          ? 'bg-gradient-to-r from-yellow-500 to-orange-500'
-                          : 'bg-gradient-to-r from-red-500 to-red-600'
+                          ? 'bg-yellow-500'
+                          : 'bg-red-500'
                       }`}
                       style={{ width: `${numScore}%` }}
                     />
@@ -252,176 +276,310 @@ export const PublicReportShare: React.FC<PublicReportShareProps> = ({ token: pro
         </div>
 
         {/* Content Gap Analysis */}
-        {contentGaps && (
-          <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200 dark:border-gray-800 p-8 shadow-xl">
+        <div className="bg-white rounded-xl border border-gray-200 p-8 shadow-sm">
+          <div className="flex items-center gap-3 mb-6">
+            <Target className="text-orange-500" size={28} />
+            <h2 className="text-2xl font-bold text-gray-900">Content Gap Analysis</h2>
+          </div>
+
+          {/* Structural Gaps */}
+          {contentGaps.structural_gaps && (contentGaps.structural_gaps as any[]).length > 0 && (
+            <div className="mb-8">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <div className="w-1 h-6 bg-red-500 rounded-full"></div>
+                Structural Gaps
+              </h3>
+              <div className="space-y-4">
+                {(contentGaps.structural_gaps as any[]).map((gap: any, index: number) => (
+                  <div key={index} className={`p-5 rounded-xl border-l-4 ${getSeverityColor(gap.severity)}`}>
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle size={20} className="flex-shrink-0 mt-1" />
+                      <div className="flex-1">
+                        <h4 className="font-semibold mb-2">{gap.gap_title}</h4>
+                        <p className="text-sm leading-relaxed mb-3">{gap.gap_description}</p>
+                        <div className="text-sm bg-white/50 px-4 py-2 rounded-lg border">
+                          <strong>Recommendation:</strong> {gap.recommended_action}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Thematic Gaps */}
+          {contentGaps.thematic_gaps && (contentGaps.thematic_gaps as any[]).length > 0 && (
+            <div className="mb-8">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <div className="w-1 h-6 bg-orange-500 rounded-full"></div>
+                Thematic Gaps
+              </h3>
+              <div className="space-y-4">
+                {(contentGaps.thematic_gaps as any[]).map((gap: any, index: number) => (
+                  <div key={index} className={`p-5 rounded-xl border-l-4 ${getSeverityColor(gap.severity)}`}>
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle size={20} className="flex-shrink-0 mt-1" />
+                      <div className="flex-1">
+                        <h4 className="font-semibold mb-2">{gap.gap_title}</h4>
+                        <p className="text-sm leading-relaxed mb-3">{gap.gap_description}</p>
+                        <div className="text-sm bg-white/50 px-4 py-2 rounded-lg border">
+                          <strong>Recommendation:</strong> {gap.recommended_action}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Critical Topic Gaps */}
+          {contentGaps.critical_topic_gaps && (contentGaps.critical_topic_gaps as any[]).length > 0 && (
+            <div className="mb-8">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <div className="w-1 h-6 bg-purple-500 rounded-full"></div>
+                Critical Topic Gaps
+              </h3>
+              <div className="space-y-4">
+                {(contentGaps.critical_topic_gaps as any[]).map((gap: any, index: number) => (
+                  <div key={index} className={`p-5 rounded-xl border-l-4 ${getSeverityColor(gap.severity)}`}>
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle size={20} className="flex-shrink-0 mt-1" />
+                      <div className="flex-1">
+                        <h4 className="font-semibold mb-2">{gap.gap_title}</h4>
+                        <p className="text-sm leading-relaxed mb-3">{gap.gap_description}</p>
+                        <div className="text-sm bg-white/50 px-4 py-2 rounded-lg border">
+                          <strong>Recommendation:</strong> {gap.recommended_action}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Significant Topic Gaps */}
+          {contentGaps.significant_topic_gaps && (contentGaps.significant_topic_gaps as any[]).length > 0 && (
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <div className="w-1 h-6 bg-yellow-500 rounded-full"></div>
+                Significant Topic Gaps
+              </h3>
+              <div className="space-y-4">
+                {(contentGaps.significant_topic_gaps as any[]).map((gap: any, index: number) => (
+                  <div key={index} className={`p-5 rounded-xl border-l-4 ${getSeverityColor(gap.severity)}`}>
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle size={20} className="flex-shrink-0 mt-1" />
+                      <div className="flex-1">
+                        <h4 className="font-semibold mb-2">{gap.gap_title}</h4>
+                        <p className="text-sm leading-relaxed mb-3">{gap.gap_description}</p>
+                        <div className="text-sm bg-white/50 px-4 py-2 rounded-lg border">
+                          <strong>Recommendation:</strong> {gap.recommended_action}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Implementation Timeline */}
+        {implementationTimeline && (implementationTimeline.immediate?.length > 0 || implementationTimeline.short_term?.length > 0) && (
+          <div className="bg-white rounded-xl border border-gray-200 p-8 shadow-sm">
             <div className="flex items-center gap-3 mb-6">
-              <Target className="text-orange-500" size={28} />
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-                Content Gap Analysis
-              </h2>
+              <Calendar className="text-green-500" size={28} />
+              <h2 className="text-2xl font-bold text-gray-900">Implementation Timeline</h2>
             </div>
 
-            {/* Severity Breakdown */}
-            {contentGaps.severity_breakdown && (
-              <div className="mb-8 p-6 bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-700 rounded-xl border border-slate-200 dark:border-slate-600">
-                <h3 className="font-semibold text-gray-900 dark:text-white mb-4">Gap Severity Overview</h3>
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="text-center p-4 bg-white dark:bg-gray-800 rounded-lg">
-                    <div className="text-3xl font-bold text-red-600 dark:text-red-400">{contentGaps.severity_breakdown.critical || 0}</div>
-                    <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">Critical</div>
-                  </div>
-                  <div className="text-center p-4 bg-white dark:bg-gray-800 rounded-lg">
-                    <div className="text-3xl font-bold text-orange-600 dark:text-orange-400">{contentGaps.severity_breakdown.significant || 0}</div>
-                    <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">Significant</div>
-                  </div>
-                  <div className="text-center p-4 bg-white dark:bg-gray-800 rounded-lg">
-                    <div className="text-3xl font-bold text-yellow-600 dark:text-yellow-400">{contentGaps.severity_breakdown.moderate || 0}</div>
-                    <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">Moderate</div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Structural Gaps */}
-            {contentGaps.structural_gaps && contentGaps.structural_gaps.length > 0 && (
-              <div className="mb-8">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                  <div className="w-1 h-6 bg-red-500 rounded-full"></div>
-                  Structural Gaps
-                </h3>
-                <div className="space-y-4">
-                  {contentGaps.structural_gaps.map((gap: any, index: number) => (
-                    <div key={index} className="p-5 bg-red-50 dark:bg-red-900/20 rounded-xl border-l-4 border-red-500">
-                      <div className="flex items-start gap-3">
-                        {getSeverityIcon(gap.severity)}
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <h4 className="font-semibold text-gray-900 dark:text-white">{gap.gap || gap.gap_title}</h4>
-                            <span className={`text-xs px-2 py-1 rounded-full font-medium ${getSeverityBadge(gap.severity)}`}>
-                              {gap.severity}
-                            </span>
-                          </div>
-                          <p className="text-gray-700 dark:text-gray-300 text-sm leading-relaxed">
-                            {gap.description || gap.gap_description}
-                          </p>
-                        </div>
-                      </div>
+            <div className="space-y-6">
+              {/* Immediate Actions */}
+              {implementationTimeline.immediate && implementationTimeline.immediate.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                    <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
+                      <span className="text-red-600 font-bold text-sm">1</span>
                     </div>
-                  ))}
+                    Immediate (0-30 days)
+                  </h3>
+                  <ul className="space-y-2 ml-10">
+                    {implementationTimeline.immediate.map((item: any, index: number) => (
+                      <li key={index} className="flex items-start gap-2 text-gray-700">
+                        <span className="text-red-500 mt-1">•</span>
+                        <span>{item.title}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Thematic Gaps */}
-            {contentGaps.thematic_gaps && contentGaps.thematic_gaps.length > 0 && (
-              <div className="mb-8">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                  <div className="w-1 h-6 bg-orange-500 rounded-full"></div>
-                  Thematic Gaps
-                </h3>
-                <div className="space-y-4">
-                  {contentGaps.thematic_gaps.map((gap: any, index: number) => (
-                    <div key={index} className="p-5 bg-orange-50 dark:bg-orange-900/20 rounded-xl border-l-4 border-orange-500">
-                      <div className="flex items-start gap-3">
-                        {getSeverityIcon(gap.severity)}
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <h4 className="font-semibold text-gray-900 dark:text-white">{gap.gap || gap.gap_title}</h4>
-                            <span className={`text-xs px-2 py-1 rounded-full font-medium ${getSeverityBadge(gap.severity)}`}>
-                              {gap.severity}
-                            </span>
-                          </div>
-                          <p className="text-gray-700 dark:text-gray-300 text-sm leading-relaxed">
-                            {gap.description || gap.gap_description}
-                          </p>
-                        </div>
-                      </div>
+              {/* Short-term Actions */}
+              {implementationTimeline.short_term && implementationTimeline.short_term.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                    <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
+                      <span className="text-orange-600 font-bold text-sm">2</span>
                     </div>
-                  ))}
+                    Short-term (30-60 days)
+                  </h3>
+                  <ul className="space-y-2 ml-10">
+                    {implementationTimeline.short_term.map((item: any, index: number) => (
+                      <li key={index} className="flex items-start gap-2 text-gray-700">
+                        <span className="text-orange-500 mt-1">•</span>
+                        <span>{item.title}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Critical Topic Gaps */}
-            {contentGaps.critical_topic_gaps && contentGaps.critical_topic_gaps.length > 0 && (
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                  <div className="w-1 h-6 bg-purple-500 rounded-full"></div>
-                  Critical Topic Gaps
-                </h3>
-                <div className="space-y-4">
-                  {contentGaps.critical_topic_gaps.map((gap: any, index: number) => (
-                    <div key={index} className="p-5 bg-purple-50 dark:bg-purple-900/20 rounded-xl border-l-4 border-purple-500">
-                      <div className="flex items-start gap-3">
-                        <AlertTriangle className="text-purple-600 dark:text-purple-400" size={20} />
-                        <div className="flex-1">
-                          <h4 className="font-semibold text-gray-900 dark:text-white mb-2">{gap.topic || gap.gap_title}</h4>
-                          <p className="text-gray-700 dark:text-gray-300 text-sm leading-relaxed mb-3">
-                            {gap.description || gap.gap_description}
-                          </p>
-                          {gap.competitor_coverage && (
-                            <p className="text-xs text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-900/30 px-3 py-2 rounded-lg">
-                              <strong>Competitor insight:</strong> {gap.competitor_coverage}
-                            </p>
-                          )}
-                        </div>
-                      </div>
+              {/* Long-term Actions */}
+              {implementationTimeline.long_term && implementationTimeline.long_term.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                    <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                      <span className="text-blue-600 font-bold text-sm">3</span>
                     </div>
-                  ))}
+                    Long-term (60-90 days)
+                  </h3>
+                  <ul className="space-y-2 ml-10">
+                    {implementationTimeline.long_term.map((item: any, index: number) => (
+                      <li key={index} className="flex items-start gap-2 text-gray-700">
+                        <span className="text-blue-500 mt-1">•</span>
+                        <span>{item.title}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         )}
 
-        {/* Recommendations */}
-        {recommendations.length > 0 && (
-          <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200 dark:border-gray-800 p-8 shadow-xl">
+        {/* Citation Opportunities */}
+        {citationOpportunities.length > 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 p-8 shadow-sm">
             <div className="flex items-center gap-3 mb-6">
-              <Lightbulb className="text-green-500" size={28} />
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-                Priority Recommendations
-              </h2>
+              <MapPin className="text-indigo-500" size={28} />
+              <h2 className="text-2xl font-bold text-gray-900">Citation Opportunities</h2>
+            </div>
+
+            <div className="space-y-3">
+              {citationOpportunities.map((opportunity: any, index: number) => (
+                <div key={index} className="flex items-start gap-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                  <div className="flex-shrink-0">
+                    <div className={`w-3 h-3 rounded-full mt-1 ${
+                      opportunity.priority === 'critical' ? 'bg-red-500' :
+                      opportunity.priority === 'high' ? 'bg-orange-500' :
+                      opportunity.priority === 'medium' ? 'bg-yellow-500' :
+                      'bg-blue-500'
+                    }`}></div>
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between mb-1">
+                      <h4 className="font-semibold text-gray-900">{opportunity.platform}</h4>
+                      <span className={`text-xs px-2 py-1 rounded-full ${
+                        opportunity.status === 'required' ? 'bg-red-100 text-red-700' :
+                        opportunity.status === 'recommended' ? 'bg-blue-100 text-blue-700' :
+                        'bg-gray-100 text-gray-700'
+                      }`}>
+                        {opportunity.status}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600">{opportunity.description}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* AI Knowledge Scores */}
+        {aiKnowledgeScores.platforms && aiKnowledgeScores.platforms.length > 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 p-8 shadow-sm">
+            <div className="flex items-center gap-3 mb-6">
+              <Lightbulb className="text-yellow-500" size={28} />
+              <h2 className="text-2xl font-bold text-gray-900">AI Knowledge Scores</h2>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {aiKnowledgeScores.platforms.map((platform: any, index: number) => (
+                <div key={index} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-semibold text-gray-900 capitalize">{platform.platform}</span>
+                    <span className={`text-sm px-2 py-1 rounded-full ${
+                      platform.knowledge_level === 'High' ? 'bg-green-100 text-green-700' :
+                      platform.knowledge_level === 'Moderate' ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-red-100 text-red-700'
+                    }`}>
+                      {platform.knowledge_level}
+                    </span>
+                  </div>
+                  <div className="mb-2">
+                    <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full ${
+                          platform.score >= 70 ? 'bg-green-500' :
+                          platform.score >= 40 ? 'bg-yellow-500' :
+                          'bg-red-500'
+                        }`}
+                        style={{ width: `${platform.score}%` }}
+                      />
+                    </div>
+                    <span className="text-xs text-gray-600 mt-1">{platform.score}/100</span>
+                  </div>
+                  <p className="text-xs text-gray-600">{platform.recommendation}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Priority Actions */}
+        {recommendations.length > 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 p-8 shadow-sm">
+            <div className="flex items-center gap-3 mb-6">
+              <Lightbulb className="text-blue-500" size={28} />
+              <h2 className="text-2xl font-bold text-gray-900">Priority Actions</h2>
             </div>
             <div className="space-y-4">
-              {recommendations.slice(0, 10).map((action: any, index: number) => (
-                <div key={index} className="group p-5 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-xl border border-green-200 dark:border-green-800 hover:shadow-lg transition-shadow">
-                  <div className="flex items-start gap-4">
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white font-bold text-sm">
-                      {index + 1}
+              {recommendations.map((action: any, index: number) => (
+                <div
+                  key={action.id || index}
+                  className="p-5 bg-gradient-to-r from-blue-50 to-blue-100/50 rounded-xl border border-blue-200"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold ${
+                        action.priority === 'high' ? 'bg-red-500' :
+                        action.priority === 'medium' ? 'bg-orange-500' :
+                        'bg-blue-500'
+                      }`}>
+                        {index + 1}
+                      </div>
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2">
-                        <h4 className="font-semibold text-gray-900 dark:text-white">
-                          {action.action_title}
-                        </h4>
-                        <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                          action.priority === 'critical' || action.priority === 'high'
-                            ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
-                            : action.priority === 'medium'
-                            ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
-                            : 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
+                        <h4 className="font-semibold text-gray-900">{action.action_title}</h4>
+                        <span className={`text-xs px-2 py-1 rounded-full ${
+                          action.estimated_impact === 'high' ? 'bg-green-100 text-green-700' :
+                          action.estimated_impact === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                          'bg-blue-100 text-blue-700'
                         }`}>
-                          {action.priority}
+                          {action.estimated_impact} impact
                         </span>
+                        {action.timeframe && (
+                          <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700">
+                            {action.timeframe}
+                          </span>
+                        )}
                       </div>
-                      <p className="text-gray-700 dark:text-gray-300 text-sm leading-relaxed">
+                      <p className="text-sm text-gray-700 leading-relaxed">
                         {action.action_description}
                       </p>
-                      {action.estimated_impact && (
-                        <div className="mt-3 flex items-center gap-4 text-xs text-gray-600 dark:text-gray-400">
-                          <span className="flex items-center gap-1">
-                            <Award size={14} className="text-green-600 dark:text-green-400" />
-                            Impact: <strong className="text-gray-900 dark:text-white">{action.estimated_impact}</strong>
-                          </span>
-                          {action.estimated_effort && (
-                            <span className="flex items-center gap-1">
-                              <Calendar size={14} className="text-blue-600 dark:text-blue-400" />
-                              Effort: <strong className="text-gray-900 dark:text-white">{action.estimated_effort}</strong>
-                            </span>
-                          )}
-                        </div>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -430,41 +588,13 @@ export const PublicReportShare: React.FC<PublicReportShareProps> = ({ token: pro
           </div>
         )}
 
-        {/* Call to Action */}
-        <div className="bg-gradient-to-r from-blue-600 via-purple-600 to-blue-700 rounded-2xl p-10 text-white text-center shadow-2xl">
-          <div className="max-w-3xl mx-auto">
-            <Award size={48} className="mx-auto mb-4 opacity-90" />
-            <h2 className="text-3xl font-bold mb-4">
-              Ready to Improve Your AI Visibility?
-            </h2>
-            <p className="text-lg mb-8 text-blue-100">
-              Get personalized recommendations, monthly tracking, and expert guidance to dominate AI-powered search results.
-            </p>
-            <div className="flex gap-4 justify-center flex-wrap">
-              <button className="px-8 py-4 bg-white text-blue-600 rounded-xl font-semibold hover:bg-blue-50 transition-colors shadow-lg hover:shadow-xl transform hover:-translate-y-0.5">
-                Schedule Consultation
-              </button>
-              <button className="px-8 py-4 border-2 border-white text-white rounded-xl font-semibold hover:bg-white/10 transition-colors">
-                Learn More
-              </button>
-            </div>
-          </div>
-        </div>
+      </div>
 
-        {/* Footer */}
-        <div className="text-center pt-8 pb-4 text-gray-600 dark:text-gray-400 space-y-2">
-          <div className="flex items-center justify-center gap-2 mb-2">
-            <BarChart3 size={20} className="text-blue-500" />
-            <span className="font-semibold text-gray-900 dark:text-white">OK Local GBP Copilot</span>
-          </div>
-          <p className="text-sm">AI Visibility Intelligence for Local Businesses</p>
-          <p className="text-xs text-gray-500 dark:text-gray-500">
-            Report generated on {new Date(report.created_at).toLocaleDateString('en-US', { 
-              month: 'long', 
-              day: 'numeric', 
-              year: 'numeric' 
-            })}
-          </p>
+      {/* Footer */}
+      <div className="bg-white border-t border-gray-200 mt-12">
+        <div className="max-w-6xl mx-auto px-6 py-8 text-center text-gray-600 text-sm">
+          <p>Generated by OK Local GBP Copilot - AI Visibility Analysis Platform</p>
+          <p className="mt-2">Report generated on {new Date(report.created_at).toLocaleString()}</p>
         </div>
       </div>
     </div>
