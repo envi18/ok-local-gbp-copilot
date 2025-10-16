@@ -88,7 +88,7 @@ export const AIReportGenerator: React.FC = () => {
       setCurrentPhase('querying');
 
       // Step 2: Trigger Netlify function for async generation
-      const response = await fetch('/.netlify/functions/generate-external-report-background', {
+      const response = await fetch('/.netlify/functions/generate-external-report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
