@@ -3,6 +3,7 @@
 
 import type { ProductName } from '../types/products';
 
+
 type UserRole = 'user' | 'manager' | 'admin';
 
 export interface RouteConfig {
@@ -122,21 +123,13 @@ export const ROUTE_CONFIG: Record<string, RouteConfig> = {
   },
 
   // NEW: AI Report Generator routes (Admin only)
-  'ai-report-generator': {
-    section: 'ai-report-generator',
-    label: 'AI Report Generator',
-    requiredRole: 'admin',
-    description: 'Generate AI visibility reports for any business (prospects, competitors, clients)',
-    isPublic: false
-  },
-
-  'ai-report-history': {
-    section: 'ai-report-history',
-    label: 'Report History',
-    requiredRole: 'admin',
-    description: 'View all generated AI visibility reports with export options',
-    isPublic: false
-  },
+  'ai-reports': {
+  section: 'ai-reports',
+  label: 'AI Reports',
+  requiredRole: 'admin',
+  description: 'Generate and manage AI visibility reports',
+  isPublic: false
+},
 
   'public-report-share': {
     section: 'public-report-share',
