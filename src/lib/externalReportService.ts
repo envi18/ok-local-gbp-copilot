@@ -316,6 +316,11 @@ export class ExternalReportService {
   }
 
   /**
+ * Get report by share token (public access)
+ */
+
+
+  /**
    * Increment share view count
    */
   private static async incrementViewCount(reportId: string): Promise<void> {

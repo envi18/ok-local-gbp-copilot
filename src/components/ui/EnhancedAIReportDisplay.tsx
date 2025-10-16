@@ -20,10 +20,14 @@ import type { ExternalReport } from '../../types/externalReport';
 import { Badge } from './Badge';
 
 interface EnhancedAIReportDisplayProps {
-  report: ExternalReport;
-}
+     report: ExternalReport;
+     isPublicView?: boolean;  // ← ADD THIS LINE
+   }
 
-export const EnhancedAIReportDisplay: React.FC<EnhancedAIReportDisplayProps> = ({ report }) => {
+export const EnhancedAIReportDisplay: React.FC<EnhancedAIReportDisplayProps> = ({ 
+     report,
+     isPublicView = false  // ← ADD THIS
+   }) => {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     timeline: false,
     citations: false,

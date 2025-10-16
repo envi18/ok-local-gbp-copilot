@@ -6,6 +6,7 @@
 const { createClient } = require('@supabase/supabase-js');
 
 exports.handler = async (event, context) => {
+  
   // Allow function to continue after response (background processing)
   context.callbackWaitsForEmptyEventLoop = false;
 
@@ -114,22 +115,34 @@ exports.handler = async (event, context) => {
     console.log(`[SUCCESS] Report completed in ${(duration/1000).toFixed(1)}s`);
 
     // Save to database
-    const { error: updateError } = await supabase
-      .from('ai_visibility_external_reports')
-      .update({
-        status: 'completed',
-        report_data: result.reportData,
-        content_gap_analysis: result.contentGapAnalysis,
-        ai_platform_scores: result.platformScores,
-        competitor_analysis: result.competitorAnalysis,
-        recommendations: result.recommendations,
-        overall_score: result.overallScore,
-        generation_completed_at: new Date().toISOString(),
-        processing_duration_ms: duration,
-        api_cost_usd: result.totalCost,
-        query_count: result.queryCount
-      })
-      .eq('id', report_id);
+// Generate share token and URL
+const shareToken = generateShareToken();
+const baseUrl = process.env.URL || 'https://ok-local-gbp.netlify.app';
+const shareUrl = `${baseUrl}/share/report/${shareToken}`;
+
+// Save to database - INCLUDE business info and share URL
+const { error: updateError } = await supabase
+  .from('ai_visibility_external_reports')
+  .update({
+    status: 'completed',
+    business_name: params.business_name,      // ← ADD THIS
+    business_type: params.business_type,      // ← ADD THIS  
+    target_website: params.website,           // ← ADD THIS
+    report_data: result.reportData,
+    content_gap_analysis: result.contentGapAnalysis,
+    ai_platform_scores: result.platformScores,
+    competitor_analysis: result.competitorAnalysis,
+    recommendations: result.recommendations,
+    overall_score: result.overallScore,
+    share_token: shareToken,                  // ← ADD THIS
+    share_url: shareUrl,                      // ← ADD THIS
+    share_enabled: true,                      // ← ADD THIS
+    generation_completed_at: new Date().toISOString(),
+    processing_duration_ms: duration,
+    api_cost_usd: result.totalCost,
+    query_count: result.queryCount
+  })
+  .eq('id', report_id);
 
     if (updateError) {
       throw new Error(`Database update failed: ${updateError.message}`);
@@ -466,10 +479,13 @@ function generateFallbackCompetitors(businessType, location) {
 async function fetchWebsiteContent(url, apiKey, retryWithJS = false, usePremiumProxy = false) {
   console.log(`[INFO] Fetching content from: ${url}`);
   
+  // Normalize URL
   let normalizedUrl = url;
   if (!url.startsWith('http://') && !url.startsWith('https://')) {
     normalizedUrl = 'https://' + url;
   }
+  
+  console.log(`[DEBUG] Normalized URL: ${normalizedUrl}`);
   
   if (!apiKey) {
     console.warn('[WARN] ScrapingBee API key not configured');
@@ -478,13 +494,13 @@ async function fetchWebsiteContent(url, apiKey, retryWithJS = false, usePremiumP
 
   try {
     const renderJS = retryWithJS ? 'true' : 'false';
-    const premiumProxy = usePremiumProxy ? 'true' : 'false';  // NEW
+    const premiumProxy = usePremiumProxy ? 'true' : 'false';
     
     const scrapingUrl = `https://app.scrapingbee.com/api/v1/?` +
       `api_key=${apiKey}` +
       `&url=${encodeURIComponent(normalizedUrl)}` +
       `&render_js=${renderJS}` +
-      `&premium_proxy=${premiumProxy}` +  // Use premium for target site
+      `&premium_proxy=${premiumProxy}` +
       `&country_code=us`;
     
     console.log(`[INFO] ScrapingBee request (render_js=${renderJS}, premium=${premiumProxy})`);
@@ -497,11 +513,11 @@ async function fetchWebsiteContent(url, apiKey, retryWithJS = false, usePremiumP
     if (!response.ok) {
       console.error(`[ERROR] ScrapingBee returned ${response.status}`);
       
-      // IMPROVED: Try with premium proxy if first attempt fails
+      // Try with premium proxy if first attempt fails
       if (response.status === 400 && !usePremiumProxy) {
         console.log('[RETRY] Attempting with premium proxy');
         await new Promise(resolve => setTimeout(resolve, 2000));
-        return fetchWebsiteContent(url, apiKey, true, true);  // Retry with JS + premium
+        return fetchWebsiteContent(url, apiKey, true, true);
       }
       
       if (response.status === 400 && !retryWithJS) {
@@ -516,16 +532,17 @@ async function fetchWebsiteContent(url, apiKey, retryWithJS = false, usePremiumP
     const html = await response.text();
     console.log(`[SUCCESS] Fetched ${(html.length / 1024).toFixed(1)}KB of content`);
 
-    return parseHTML(html, normalizedUrl);
+    // CRITICAL FIX: Use correct function name
+    return parseHTMLContent(html, normalizedUrl);  // ← FIXED: was parseHTML
 
   } catch (error) {
     console.error('[ERROR] Fetch failed:', error.message);
     
-    if (!retryWithJS) {
+    if (!retryWithJS && !usePremiumProxy) {
       console.log('[RETRY] Attempting with JavaScript rendering');
       try {
         await new Promise(resolve => setTimeout(resolve, 2000));
-        return fetchWebsiteContent(url, apiKey, true, usePremiumProxy);
+        return fetchWebsiteContent(url, apiKey, true, false);
       } catch (retryError) {
         console.error('[ERROR] Retry also failed:', retryError.message);
       }
@@ -588,6 +605,177 @@ function parseHTMLContent(html, baseUrl) {
 
   return content;
 }
+
+/**
+ * Extract business information from website content
+ * Auto-detects: business name, type, and location
+ */
+function extractBusinessInfo(html, url) {
+  console.log('[INFO] Auto-detecting business information');
+  
+  const info = {
+    business_name: '',
+    business_type: '',
+    location: ''
+  };
+  
+  // 1. Extract Business Name
+  // Try schema.org markup first
+  const schemaNameMatch = html.match(/"name":\s*"([^"]+)"/);
+  if (schemaNameMatch) {
+    info.business_name = schemaNameMatch[1];
+  }
+  
+  // Try Open Graph
+  if (!info.business_name) {
+    const ogTitleMatch = html.match(/<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i);
+    if (ogTitleMatch) {
+      info.business_name = ogTitleMatch[1];
+    }
+  }
+  
+  // Try title tag (clean it up)
+  if (!info.business_name) {
+    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+    if (titleMatch) {
+      let title = titleMatch[1].trim();
+      // Remove common suffixes
+      title = title
+        .replace(/\s*[\|\-–]\s*.*/g, '') // Remove everything after | or -
+        .replace(/\s*(Home|Welcome)\s*/gi, '') // Remove Home/Welcome
+        .trim();
+      info.business_name = title;
+    }
+  }
+  
+  // Fallback: extract from domain
+  if (!info.business_name) {
+    try {
+      const domain = new URL(url).hostname
+        .replace(/^www\./, '')
+        .replace(/\.(com|net|org|io|co|us|biz)$/, '');
+      info.business_name = domain
+        .split(/[-_]/)
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+    } catch (error) {
+      info.business_name = 'Business';
+    }
+  }
+  
+  // 2. Extract Business Type/Industry
+  // Try schema.org @type
+  const schemaTypeMatch = html.match(/"@type":\s*"([^"]+)"/);
+  if (schemaTypeMatch) {
+    const type = schemaTypeMatch[1];
+    // Convert schema types to readable business types
+    const typeMap = {
+      'LocalBusiness': 'local business',
+      'Restaurant': 'restaurant',
+      'FoodEstablishment': 'restaurant',
+      'Cafe': 'cafe',
+      'CafeOrCoffeeShop': 'coffee shop',
+      'AutoRepair': 'auto repair',
+      'Dentist': 'dental',
+      'Physician': 'medical',
+      'Plumber': 'plumbing',
+      'Electrician': 'electrical',
+      'HomeAndConstructionBusiness': 'home services',
+      'ProfessionalService': 'professional services'
+    };
+    info.business_type = typeMap[type] || type.toLowerCase();
+  }
+  
+  // Try meta description for keywords
+  if (!info.business_type) {
+    const metaDescMatch = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i);
+    if (metaDescMatch) {
+      const desc = metaDescMatch[1].toLowerCase();
+      // Look for business type keywords
+      const keywords = [
+        'restaurant', 'cafe', 'coffee', 'plumb', 'electric', 'hvac',
+        'auto repair', 'mechanic', 'dental', 'dentist', 'doctor', 'medical',
+        'lawyer', 'attorney', 'accountant', 'landscap', 'clean', 'removal',
+        'hauling', 'construction', 'contractor', 'real estate', 'insurance'
+      ];
+      
+      for (const keyword of keywords) {
+        if (desc.includes(keyword)) {
+          info.business_type = keyword.replace(/ing$/, '').trim();
+          break;
+        }
+      }
+    }
+  }
+  
+  // Try H1 heading
+  if (!info.business_type) {
+    const h1Match = html.match(/<h1[^>]*>([^<]+)<\/h1>/i);
+    if (h1Match) {
+      const h1 = h1Match[1].toLowerCase();
+      const keywords = [
+        'removal', 'repair', 'service', 'cleaning', 'construction',
+        'restaurant', 'cafe', 'shop', 'store', 'clinic', 'office'
+      ];
+      
+      for (const keyword of keywords) {
+        if (h1.includes(keyword)) {
+          info.business_type = keyword;
+          break;
+        }
+      }
+    }
+  }
+  
+  // Fallback
+  if (!info.business_type) {
+    info.business_type = 'business';
+  }
+  
+  // 3. Extract Location (City, State)
+  // Try schema.org address
+  const schemaAddressMatch = html.match(/"addressLocality":\s*"([^"]+)"[^}]*"addressRegion":\s*"([^"]+)"/);
+  if (schemaAddressMatch) {
+    info.location = `${schemaAddressMatch[1]}, ${schemaAddressMatch[2]}`;
+  }
+  
+  // Try pattern: City, ST format
+  if (!info.location) {
+    const locationPattern = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*),\s*([A-Z]{2})\b/g;
+    const matches = [];
+    let match;
+    
+    while ((match = locationPattern.exec(html)) !== null && matches.length < 5) {
+      const city = match[1];
+      const state = match[2];
+      // Filter out common false positives
+      if (!['US', 'UK', 'CA', 'NY', 'LA'].includes(city)) {
+        matches.push(`${city}, ${state}`);
+      }
+    }
+    
+    // Use most common location mention
+    if (matches.length > 0) {
+      const frequency = {};
+      matches.forEach(loc => {
+        frequency[loc] = (frequency[loc] || 0) + 1;
+      });
+      
+      info.location = Object.entries(frequency)
+        .sort((a, b) => b[1] - a[1])[0][0];
+    }
+  }
+  
+  // Fallback
+  if (!info.location) {
+    info.location = 'Unknown';
+  }
+  
+  console.log('[SUCCESS] Auto-detected:', info);
+  
+  return info;
+}
+
 
 /**
  * Extract title from HTML
@@ -1063,17 +1251,49 @@ async function generatePhase2Report(params) {
   // ===================================================================
   // PHASE 1: FETCH TARGET WEBSITE CONTENT
   // ===================================================================
- console.log('[PHASE 1] Fetching target website content');
+
+console.log('[PHASE 1] Fetching target website content');
 
 let targetContent;
+let autoDetectedInfo = null;
+
 try {
-  // Use premium proxy for target site to handle bot protection
-  targetContent = await fetchWebsiteContent(website, apiKeys.scrapingbee, false, true);
+  // Fetch website content first
+  const rawHtml = await fetch(`https://app.scrapingbee.com/api/v1/?api_key=${apiKeys.scrapingbee}&url=${encodeURIComponent(website)}&render_js=false&premium_proxy=true&country_code=us`)
+    .then(res => res.text());
+  
+  // Auto-detect business info if not provided
+  if (!business_name || !business_type || !location || location === 'Unknown') {
+    console.log('[INFO] Auto-detecting business information from website');
+    autoDetectedInfo = extractBusinessInfo(rawHtml, website);
+    
+    // Use auto-detected values as fallbacks
+    business_name = business_name || autoDetectedInfo.business_name;
+    business_type = business_type || autoDetectedInfo.business_type;
+    location = location === 'Unknown' ? autoDetectedInfo.location : location;
+    
+    console.log(`[SUCCESS] Auto-detected: ${business_name} (${business_type}) in ${location}`);
+  }
+  
+  // Parse HTML content
+  targetContent = parseHTMLContent(rawHtml, website);
   console.log('[SUCCESS] Target website content fetched');
   totalCost += 0.05;
 } catch (error) {
   console.error('[ERROR] Failed to fetch target website:', error.message);
   targetContent = generateFallbackContent(website);
+  
+  // Even if fetch fails, try to use URL to guess business name
+  if (!business_name) {
+    try {
+      const domain = new URL(website).hostname.replace(/^www\./, '').replace(/\.\w+$/, '');
+      business_name = domain.split(/[-_]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    } catch (e) {
+      business_name = 'Business';
+    }
+  }
+  if (!business_type) business_type = 'business';
+  if (!location || location === 'Unknown') location = 'Unknown';
 }
 
   // ===================================================================
@@ -1388,4 +1608,16 @@ function extractTargetWeaknesses(contentGaps) {
   });
   
   return weaknesses;
+
+  /**
+ * Generate random share token
+ */
+function generateShareToken() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let token = '';
+  for (let i = 0; i < 32; i++) {
+    token += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return token;
+}
 }

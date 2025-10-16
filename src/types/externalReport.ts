@@ -32,6 +32,8 @@ export interface ExternalReport {
   ai_platform_scores: Record<string, number> | null;
   competitor_analysis: CompetitorAnalysis | null;
   recommendations: PriorityAction[] | null;
+  overall_score: number | null;
+
   
   // Sharing
   share_token: string | null;
