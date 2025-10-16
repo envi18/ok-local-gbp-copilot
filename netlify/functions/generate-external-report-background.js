@@ -463,61 +463,75 @@ function generateFallbackCompetitors(businessType, location) {
  * Fetch website content using ScrapingBee
  * IMPROVED: Better error handling, JS rendering option, retry logic
  */
-async function fetchWebsiteContent(url, apiKey, retryWithJS = false) {
+async function fetchWebsiteContent(url, apiKey, retryWithJS = false, usePremiumProxy = false) {
   console.log(`[INFO] Fetching content from: ${url}`);
+  
+  let normalizedUrl = url;
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    normalizedUrl = 'https://' + url;
+  }
   
   if (!apiKey) {
     console.warn('[WARN] ScrapingBee API key not configured');
-    return generateFallbackContent(url);
+    return generateFallbackContent(normalizedUrl);
   }
 
   try {
-    // IMPROVED: Try with JavaScript rendering if initial request fails
     const renderJS = retryWithJS ? 'true' : 'false';
+    const premiumProxy = usePremiumProxy ? 'true' : 'false';  // NEW
     
-    const scrapingBeeUrl = `https://app.scrapingbee.com/api/v1/?` +
+    const scrapingUrl = `https://app.scrapingbee.com/api/v1/?` +
       `api_key=${apiKey}` +
-      `&url=${encodeURIComponent(url)}` +
+      `&url=${encodeURIComponent(normalizedUrl)}` +
       `&render_js=${renderJS}` +
-      `&premium_proxy=false` +
-      `&return_page_source=true`;
+      `&premium_proxy=${premiumProxy}` +  // Use premium for target site
+      `&country_code=us`;
     
-    console.log(`[DEBUG] ScrapingBee request (render_js=${renderJS})`);
+    console.log(`[INFO] ScrapingBee request (render_js=${renderJS}, premium=${premiumProxy})`);
     
-    const response = await fetch(scrapingBeeUrl, {
+    const response = await fetch(scrapingUrl, {
       method: 'GET',
-      headers: {
-        'Accept': 'text/html,application/xhtml+xml'
-      }
+      headers: { 'Accept': 'text/html' }
     });
 
     if (!response.ok) {
-      // IMPROVED: If first attempt fails with render_js=false, try with render_js=true
-      if (!retryWithJS && response.status === 400) {
+      console.error(`[ERROR] ScrapingBee returned ${response.status}`);
+      
+      // IMPROVED: Try with premium proxy if first attempt fails
+      if (response.status === 400 && !usePremiumProxy) {
+        console.log('[RETRY] Attempting with premium proxy');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        return fetchWebsiteContent(url, apiKey, true, true);  // Retry with JS + premium
+      }
+      
+      if (response.status === 400 && !retryWithJS) {
         console.log('[RETRY] Attempting with JavaScript rendering enabled');
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
-        return await fetchWebsiteContent(url, apiKey, true);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        return fetchWebsiteContent(url, apiKey, true, usePremiumProxy);
       }
       
       throw new Error(`ScrapingBee error: ${response.status}`);
     }
 
     const html = await response.text();
-    
-    if (!html || html.length < 100) {
-      throw new Error('Empty or invalid response from ScrapingBee');
-    }
-
     console.log(`[SUCCESS] Fetched ${(html.length / 1024).toFixed(1)}KB of content`);
 
-    // Parse HTML and extract content
-    const content = parseHTMLContent(html, url);
-    
-    return content;
+    return parseHTML(html, normalizedUrl);
 
   } catch (error) {
-    console.error(`[ERROR] Failed to fetch ${url}:`, error.message);
-    return generateFallbackContent(url);
+    console.error('[ERROR] Fetch failed:', error.message);
+    
+    if (!retryWithJS) {
+      console.log('[RETRY] Attempting with JavaScript rendering');
+      try {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        return fetchWebsiteContent(url, apiKey, true, usePremiumProxy);
+      } catch (retryError) {
+        console.error('[ERROR] Retry also failed:', retryError.message);
+      }
+    }
+    
+    return generateFallbackContent(normalizedUrl);
   }
 }
 
@@ -1049,17 +1063,18 @@ async function generatePhase2Report(params) {
   // ===================================================================
   // PHASE 1: FETCH TARGET WEBSITE CONTENT
   // ===================================================================
-  console.log('[PHASE 1] Fetching target website content');
-  
-  let targetContent;
-  try {
-    targetContent = await fetchWebsiteContent(website, apiKeys.scrapingbee);
-    console.log('[SUCCESS] Target website content fetched');
-    totalCost += 0.05; // ScrapingBee cost estimate
-  } catch (error) {
-    console.error('[ERROR] Failed to fetch target website:', error.message);
-    targetContent = generateFallbackContent(website);
-  }
+ console.log('[PHASE 1] Fetching target website content');
+
+let targetContent;
+try {
+  // Use premium proxy for target site to handle bot protection
+  targetContent = await fetchWebsiteContent(website, apiKeys.scrapingbee, false, true);
+  console.log('[SUCCESS] Target website content fetched');
+  totalCost += 0.05;
+} catch (error) {
+  console.error('[ERROR] Failed to fetch target website:', error.message);
+  targetContent = generateFallbackContent(website);
+}
 
   // ===================================================================
   // PHASE 2: DISCOVER COMPETITORS
