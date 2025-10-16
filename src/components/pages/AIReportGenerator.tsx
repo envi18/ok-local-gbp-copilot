@@ -1,5 +1,6 @@
 // src/components/pages/AIReportGenerator.tsx
 // Main page for generating external AI visibility reports
+// FIXED: Form data passing to backend function
 
 import { Copy, Download, FileText, Mail, Share2 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
@@ -74,6 +75,8 @@ export const AIReportGenerator: React.FC = () => {
     setCurrentPhase('initializing');
 
     try {
+      console.log('📝 Form submitted with data:', request);
+
       // Step 1: Create report record
       const { report_id, error: createError } = await ExternalReportService.createReport(
         request,
@@ -84,28 +87,41 @@ export const AIReportGenerator: React.FC = () => {
         throw new Error(createError);
       }
 
+      console.log('✅ Report ID created:', report_id);
       setCurrentReportId(report_id);
       setCurrentPhase('querying');
 
       // Step 2: Trigger Netlify function for async generation
+      // CRITICAL FIX: Map form fields to backend parameter names
+      const backendPayload = {
+        report_id,
+        target_website: request.target_website,
+        business_name: request.business_name || request.target_website, // Fallback to website if no name
+        business_type: request.business_type || 'business', // Ensure not undefined
+        business_location: request.business_location || 'Unknown', // Ensure not undefined
+        competitor_websites: request.competitor_websites
+      };
+
+      console.log('🚀 Calling backend with payload:', backendPayload);
+
       const response = await fetch('/.netlify/functions/generate-external-report-background', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          report_id,
-          ...request
-        })
+        body: JSON.stringify(backendPayload)
       });
 
       if (!response.ok) {
-        throw new Error('Failed to start report generation');
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `Backend returned ${response.status}`);
       }
+
+      console.log('✅ Backend function triggered successfully');
 
       // Simulate progress for UI (actual progress tracked by polling)
       simulateProgress();
 
     } catch (err: any) {
-      console.error('Error generating report:', err);
+      console.error('❌ Error generating report:', err);
       setError(err.message || 'Failed to generate report');
       setCurrentPhase('error');
       setIsGenerating(false);
@@ -308,3 +324,5 @@ Best,
     </div>
   );
 };
+
+// THIS IS THE END OF THE FILE

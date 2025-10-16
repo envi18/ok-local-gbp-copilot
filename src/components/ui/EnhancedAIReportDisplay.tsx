@@ -1,6 +1,6 @@
 // src/components/ui/EnhancedAIReportDisplay.tsx
 // Comprehensive display component for enhanced AI visibility reports
-
+// FIXED: Platform scores rendering issue (React error #31)
 import {
   AlertTriangle,
   Award,
@@ -36,7 +36,11 @@ export const EnhancedAIReportDisplay: React.FC<EnhancedAIReportDisplayProps> = (
   };
 
   const contentGaps = report.content_gap_analysis || {} as any;
-  const platformScores = report.ai_platform_scores || {};
+  
+  // FIXED: Handle both array and object formats for platform scores
+  const platformScoresRaw = report.ai_platform_scores || [];
+  const platformScores = Array.isArray(platformScoresRaw) ? platformScoresRaw : [];
+  
   const competitorAnalysis = report.competitor_analysis || {} as any;
   const recommendations = report.recommendations || [];
   
@@ -44,10 +48,12 @@ export const EnhancedAIReportDisplay: React.FC<EnhancedAIReportDisplayProps> = (
   const citationOpportunities = contentGaps.citation_opportunities || [];
   const aiKnowledgeScores = contentGaps.ai_knowledge_scores || {};
   
-  const overallScore = Math.round(
-    Object.values(platformScores).reduce((sum: number, score: any) => sum + score, 0) / 
-    Math.max(Object.keys(platformScores).length, 1)
-  );
+  // FIXED: Calculate overall score from array of platform score objects
+  const overallScore = platformScores.length > 0
+    ? Math.round(
+        platformScores.reduce((sum: number, ps: any) => sum + (ps.score || 0), 0) / platformScores.length
+      )
+    : 0;
 
   const getGrade = (score: number): string => {
     if (score >= 90) return 'A+';
@@ -97,7 +103,7 @@ export const EnhancedAIReportDisplay: React.FC<EnhancedAIReportDisplayProps> = (
             <div className="grid grid-cols-3 gap-4 mt-6">
               <div className="bg-white/10 rounded-lg p-4 backdrop-blur-sm">
                 <div className="text-blue-100 text-sm mb-1">Platforms</div>
-                <div className="text-2xl font-bold">{Object.keys(platformScores).length}</div>
+                <div className="text-2xl font-bold">{platformScores.length}</div>
               </div>
               <div className="bg-white/10 rounded-lg p-4 backdrop-blur-sm">
                 <div className="text-blue-100 text-sm mb-1">Competitors</div>
@@ -209,8 +215,8 @@ export const EnhancedAIReportDisplay: React.FC<EnhancedAIReportDisplayProps> = (
         </div>
       )}
 
-      {/* Platform Scores */}
-      {Object.keys(platformScores).length > 0 && (
+      {/* Platform Scores - FIXED VERSION */}
+      {platformScores.length > 0 && (
         <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
           <div className="flex items-center gap-3 mb-6">
             <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
@@ -221,26 +227,48 @@ export const EnhancedAIReportDisplay: React.FC<EnhancedAIReportDisplayProps> = (
             </h3>
           </div>
           <div className="space-y-4">
-            {Object.entries(platformScores).map(([platform, score]: [string, any]) => (
-              <div key={platform}>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300 capitalize">
-                    {platform}
-                  </span>
-                  <span className="text-sm font-bold text-gray-900 dark:text-white">
-                    {score}/100
-                  </span>
+            {platformScores.map((platformScore: any, idx: number) => {
+              // CRITICAL FIX: Extract individual properties from the object
+              const platform = platformScore.platform || 'unknown';
+              const score = platformScore.score || 0;
+              const status = platformScore.status || 'estimated';
+              const details = platformScore.details || '';
+              
+              return (
+                <div key={idx}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300 capitalize">
+                        {platform}
+                      </span>
+                      <span className={`text-xs px-2 py-0.5 rounded ${
+                        status === 'success' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
+                        status === 'estimated' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' :
+                        'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
+                      }`}>
+                        {status}
+                      </span>
+                    </div>
+                    <span className="text-sm font-bold text-gray-900 dark:text-white">
+                      {score}/100
+                    </span>
+                  </div>
+                  <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full transition-all ${
+                        score >= 80 ? 'bg-green-500' : score >= 60 ? 'bg-yellow-500' : 'bg-red-500'
+                      }`}
+                      style={{ width: `${Math.min(100, Math.max(0, score))}%` }}
+                    />
+                  </div>
+                  {details && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      {details}
+                    </p>
+                  )}
                 </div>
-                <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full transition-all ${
-                      score >= 80 ? 'bg-green-500' : score >= 60 ? 'bg-yellow-500' : 'bg-red-500'
-                    }`}
-                    style={{ width: `${score}%` }}
-                  />
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -382,24 +410,34 @@ export const EnhancedAIReportDisplay: React.FC<EnhancedAIReportDisplayProps> = (
             {[
               ...(contentGaps.critical_topic_gaps || []),
               ...(contentGaps.significant_topic_gaps || []),
-              ...(contentGaps.structural_gaps || [])
+              ...(contentGaps.structural_gaps || []),
+              ...(contentGaps.topic_gaps || []),
+              ...(contentGaps.feature_gaps || [])
             ].slice(0, 10).map((gap: any, idx: number) => (
               <div key={idx} className={`p-4 rounded-lg border ${getSeverityColor(gap.severity)}`}>
                 <div className="flex items-start justify-between mb-2">
-                  <h4 className="font-semibold">{gap.gap_title}</h4>
+                  <h4 className="font-semibold">{gap.gap_title || gap.title}</h4>
                   <Badge variant={gap.severity === 'critical' ? 'error' : gap.severity === 'significant' ? 'warning' : 'info'} size="sm">
                     {gap.severity}
                   </Badge>
                 </div>
-                <p className="text-sm mb-3">{gap.gap_description}</p>
+                <p className="text-sm mb-3">{gap.gap_description || gap.description}</p>
                 {gap.competitors_have_this && gap.competitors_have_this.length > 0 && (
                   <div className="text-xs mb-2">
                     <span className="font-semibold">Competitors have this:</span> {gap.competitors_have_this.join(', ')}
                   </div>
                 )}
-                {gap.recommended_action && (
+                {gap.competitor_example && (
+                  <div className="text-xs mb-2">
+                    <span className="font-semibold">Example:</span>{' '}
+                    <a href={gap.competitor_example} target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">
+                      View competitor example
+                    </a>
+                  </div>
+                )}
+                {(gap.recommended_action || gap.action_steps) && (
                   <div className="bg-white dark:bg-gray-800 bg-opacity-50 rounded p-2 text-sm">
-                    <span className="font-semibold">Action:</span> {gap.recommended_action}
+                    <span className="font-semibold">Action:</span> {gap.recommended_action || gap.action_steps?.[0]}
                   </div>
                 )}
               </div>
@@ -415,330 +453,330 @@ export const EnhancedAIReportDisplay: React.FC<EnhancedAIReportDisplayProps> = (
             <div className="flex items-center gap-3">
               <div className="p-2 bg-teal-100 dark:bg-teal-900/30 rounded-lg">
                 <BookOpen size={24} className="text-teal-600 dark:text-teal-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  Citation Opportunities
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Priority sources to build visibility
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => toggleSection('citations')}
+              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+            >
+              {expandedSections.citations ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            {citationOpportunities.slice(0, expandedSections.citations ? undefined : 5).map((cit: any, idx: number) => (
+              <div 
+                key={idx} 
+                className={`p-4 rounded-lg border ${
+                  cit.priority === 'critical' 
+                    ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+                    : cit.priority === 'high'
+                    ? 'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800'
+                    : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+                }`}
+              >
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-gray-900 dark:text-white capitalize">
+                      {cit.platform}
+                    </span>
+                    <Badge variant={getPriorityColor(cit.priority)} size="sm">
+                      {cit.priority}
+                    </Badge>
+                    <Badge 
+                      variant={cit.status === 'required' ? 'error' : cit.status === 'recommended' ? 'warning' : 'info'} 
+                      size="sm"
+                    >
+                      {cit.status}
+                    </Badge>
+                  </div>
+                </div>
+                <p className="text-sm text-gray-700 dark:text-gray-300">
+                  {cit.description}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          {!expandedSections.citations && citationOpportunities.length > 5 && (
+            <button
+              onClick={() => toggleSection('citations')}
+              className="w-full mt-3 py-2 text-sm text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
+            >
+              Show {citationOpportunities.length - 5} more opportunities
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Implementation Timeline */}
+      {(implementationTimeline.immediate || implementationTimeline.short_term || implementationTimeline.long_term) && (
+        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-pink-100 dark:bg-pink-900/30 rounded-lg">
+                <Clock size={24} className="text-pink-600 dark:text-pink-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  Implementation Timeline
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Prioritized action roadmap
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => toggleSection('timeline')}
+              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+            >
+              {expandedSections.timeline ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+            </button>
+          </div>
+
+          <div className="space-y-6">
+            {/* Immediate Actions */}
+            {implementationTimeline.immediate && implementationTimeline.immediate.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                  <h4 className="font-semibold text-gray-900 dark:text-white">
+                    Immediate Actions (1-2 weeks)
+                  </h4>
+                  <Badge variant="error" size="sm">
+                    {implementationTimeline.immediate.length}
+                  </Badge>
+                </div>
+                <div className="space-y-2 ml-5 border-l-2 border-red-200 dark:border-red-800 pl-4">
+                  {implementationTimeline.immediate.map((action: any, idx: number) => (
+                    <div key={idx} className="bg-red-50 dark:bg-red-900/20 rounded-lg p-3 border border-red-200 dark:border-red-800">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <p className="font-medium text-gray-900 dark:text-white">{action.title}</p>
+                          <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">{action.duration || action.effort}</p>
+                        </div>
+                        <Badge variant={getPriorityColor(action.priority)} size="sm">
+                          {action.priority}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Short-term Actions */}
+            {implementationTimeline.short_term && implementationTimeline.short_term.length > 0 && expandedSections.timeline && (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                  <h4 className="font-semibold text-gray-900 dark:text-white">
+                    Short-term Actions (1-3 months)
+                  </h4>
+                  <Badge variant="warning" size="sm">
+                    {implementationTimeline.short_term.length}
+                  </Badge>
+                </div>
+                <div className="space-y-2 ml-5 border-l-2 border-yellow-200 dark:border-yellow-800 pl-4">
+                  {implementationTimeline.short_term.map((action: any, idx: number) => (
+                    <div key={idx} className="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-3 border border-yellow-200 dark:border-yellow-800">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <p className="font-medium text-gray-900 dark:text-white">{action.title}</p>
+                          <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">{action.duration || action.effort}</p>
+                        </div>
+                        <Badge variant={getPriorityColor(action.priority)} size="sm">
+                          {action.priority}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Long-term Actions */}
+            {implementationTimeline.long_term && implementationTimeline.long_term.length > 0 && expandedSections.timeline && (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                  <h4 className="font-semibold text-gray-900 dark:text-white">
+                    Long-term Actions (3-6 months)
+                  </h4>
+                  <Badge variant="info" size="sm">
+                    {implementationTimeline.long_term.length}
+                  </Badge>
+                </div>
+                <div className="space-y-2 ml-5 border-l-2 border-blue-200 dark:border-blue-800 pl-4">
+                  {implementationTimeline.long_term.map((action: any, idx: number) => (
+                    <div key={idx} className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 border border-blue-200 dark:border-blue-800">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <p className="font-medium text-gray-900 dark:text-white">{action.title}</p>
+                          <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">{action.duration || action.effort}</p>
+                        </div>
+                        <Badge variant={getPriorityColor(action.priority)} size="sm">
+                          {action.priority}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Priority Actions/Recommendations */}
+      {recommendations.length > 0 && (
+        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg">
+              <CheckCircle size={24} className="text-green-600 dark:text-green-400" />
             </div>
             <div>
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                Citation Opportunities
+                Priority Actions
               </h3>
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                Priority sources to build visibility
+                Recommended improvements to boost AI visibility
               </p>
             </div>
           </div>
-          <button
-            onClick={() => toggleSection('citations')}
-            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-          >
-            {expandedSections.citations ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-          </button>
-        </div>
 
-        <div className="space-y-3">
-          {citationOpportunities.slice(0, expandedSections.citations ? undefined : 5).map((cit: any, idx: number) => (
-            <div 
-              key={idx} 
-              className={`p-4 rounded-lg border ${
-                cit.priority === 'critical' 
-                  ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
-                  : cit.priority === 'high'
-                  ? 'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800'
-                  : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
-              }`}
-            >
-              <div className="flex items-start justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-gray-900 dark:text-white capitalize">
-                    {cit.platform}
-                  </span>
-                  <Badge variant={getPriorityColor(cit.priority)} size="sm">
-                    {cit.priority}
-                  </Badge>
-                  <Badge 
-                    variant={cit.status === 'required' ? 'error' : cit.status === 'recommended' ? 'warning' : 'info'} 
-                    size="sm"
-                  >
-                    {cit.status}
-                  </Badge>
+          <div className="space-y-3">
+            {recommendations.slice(0, 8).map((action: any, idx: number) => (
+              <div
+                key={idx}
+                className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-700 transition-colors"
+              >
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-gray-900 dark:text-white">
+                      {action.action_title || action.title}
+                    </span>
+                    <Badge variant={getPriorityColor(action.priority)} size="sm">
+                      {action.priority}
+                    </Badge>
+                  </div>
                 </div>
-              </div>
-              <p className="text-sm text-gray-700 dark:text-gray-300">
-                {cit.description}
-              </p>
-            </div>
-          ))}
-        </div>
-
-        {!expandedSections.citations && citationOpportunities.length > 5 && (
-          <button
-            onClick={() => toggleSection('citations')}
-            className="w-full mt-3 py-2 text-sm text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
-          >
-            Show {citationOpportunities.length - 5} more opportunities
-          </button>
-        )}
-      </div>
-    )}
-
-    {/* Implementation Timeline */}
-    {(implementationTimeline.immediate || implementationTimeline.short_term || implementationTimeline.long_term) && (
-      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-pink-100 dark:bg-pink-900/30 rounded-lg">
-              <Clock size={24} className="text-pink-600 dark:text-pink-400" />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                Implementation Timeline
-              </h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Prioritized action roadmap
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => toggleSection('timeline')}
-            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-          >
-            {expandedSections.timeline ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-          </button>
-        </div>
-
-        <div className="space-y-6">
-          {/* Immediate Actions */}
-          {implementationTimeline.immediate && implementationTimeline.immediate.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                <h4 className="font-semibold text-gray-900 dark:text-white">
-                  Immediate Actions (1-2 weeks)
-                </h4>
-                <Badge variant="error" size="sm">
-                  {implementationTimeline.immediate.length}
-                </Badge>
-              </div>
-              <div className="space-y-2 ml-5 border-l-2 border-red-200 dark:border-red-800 pl-4">
-                {implementationTimeline.immediate.map((action: any, idx: number) => (
-                  <div key={idx} className="bg-red-50 dark:bg-red-900/20 rounded-lg p-3 border border-red-200 dark:border-red-800">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <p className="font-medium text-gray-900 dark:text-white">{action.title}</p>
-                        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">{action.duration}</p>
-                      </div>
-                      <Badge variant={getPriorityColor(action.priority)} size="sm">
-                        {action.priority}
-                      </Badge>
+                <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">
+                  {action.action_description || action.description}
+                </p>
+                <div className="flex items-center gap-4 text-xs text-gray-600 dark:text-gray-400">
+                  {action.estimated_impact && (
+                    <div className="flex items-center gap-1">
+                      <span className="font-semibold">Impact:</span>
+                      <span className="capitalize">{action.estimated_impact}</span>
                     </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Short-term Actions */}
-          {implementationTimeline.short_term && implementationTimeline.short_term.length > 0 && expandedSections.timeline && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                <h4 className="font-semibold text-gray-900 dark:text-white">
-                  Short-term Actions (1-3 months)
-                </h4>
-                <Badge variant="warning" size="sm">
-                  {implementationTimeline.short_term.length}
-                </Badge>
-              </div>
-              <div className="space-y-2 ml-5 border-l-2 border-yellow-200 dark:border-yellow-800 pl-4">
-                {implementationTimeline.short_term.map((action: any, idx: number) => (
-                  <div key={idx} className="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-3 border border-yellow-200 dark:border-yellow-800">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <p className="font-medium text-gray-900 dark:text-white">{action.title}</p>
-                        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">{action.duration}</p>
-                      </div>
-                      <Badge variant={getPriorityColor(action.priority)} size="sm">
-                        {action.priority}
-                      </Badge>
+                  )}
+                  {action.estimated_effort && (
+                    <div className="flex items-center gap-1">
+                      <span className="font-semibold">Effort:</span>
+                      <span className="capitalize">{action.estimated_effort}</span>
                     </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Long-term Actions */}
-          {implementationTimeline.long_term && implementationTimeline.long_term.length > 0 && expandedSections.timeline && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                <h4 className="font-semibold text-gray-900 dark:text-white">
-                  Long-term Actions (3-6 months)
-                </h4>
-                <Badge variant="info" size="sm">
-                  {implementationTimeline.long_term.length}
-                </Badge>
-              </div>
-              <div className="space-y-2 ml-5 border-l-2 border-blue-200 dark:border-blue-800 pl-4">
-                {implementationTimeline.long_term.map((action: any, idx: number) => (
-                  <div key={idx} className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 border border-blue-200 dark:border-blue-800">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <p className="font-medium text-gray-900 dark:text-white">{action.title}</p>
-                        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">{action.duration}</p>
-                      </div>
-                      <Badge variant={getPriorityColor(action.priority)} size="sm">
-                        {action.priority}
-                      </Badge>
+                  )}
+                  {action.category && (
+                    <div className="flex items-center gap-1">
+                      <span className="font-semibold">Category:</span>
+                      <span className="capitalize">{action.category}</span>
                     </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    )}
-
-    {/* Priority Actions/Recommendations */}
-    {recommendations.length > 0 && (
-      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg">
-            <CheckCircle size={24} className="text-green-600 dark:text-green-400" />
-          </div>
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Priority Actions
-            </h3>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              Recommended improvements to boost AI visibility
-            </p>
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          {recommendations.slice(0, 8).map((action: any, idx: number) => (
-            <div
-              key={idx}
-              className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-700 transition-colors"
-            >
-              <div className="flex items-start justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-gray-900 dark:text-white">
-                    {action.action_title}
-                  </span>
-                  <Badge variant={getPriorityColor(action.priority)} size="sm">
-                    {action.priority}
-                  </Badge>
+                  )}
                 </div>
-              </div>
-              <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">
-                {action.action_description}
-              </p>
-              <div className="flex items-center gap-4 text-xs text-gray-600 dark:text-gray-400">
-                {action.estimated_impact && (
-                  <div className="flex items-center gap-1">
-                    <span className="font-semibold">Impact:</span>
-                    <span className="capitalize">{action.estimated_impact}</span>
-                  </div>
-                )}
-                {action.estimated_effort && (
-                  <div className="flex items-center gap-1">
-                    <span className="font-semibold">Effort:</span>
-                    <span className="capitalize">{action.estimated_effort}</span>
-                  </div>
-                )}
-                {action.category && (
-                  <div className="flex items-center gap-1">
-                    <span className="font-semibold">Category:</span>
-                    <span className="capitalize">{action.category}</span>
+                {action.fix_instructions && (
+                  <div className="mt-3 bg-blue-50 dark:bg-blue-900/20 rounded p-2 border border-blue-200 dark:border-blue-800">
+                    <p className="text-xs text-blue-900 dark:text-blue-100">
+                      <span className="font-semibold">How to fix:</span> {action.fix_instructions}
+                    </p>
                   </div>
                 )}
               </div>
-              {action.fix_instructions && (
-                <div className="mt-3 bg-blue-50 dark:bg-blue-900/20 rounded p-2 border border-blue-200 dark:border-blue-800">
-                  <p className="text-xs text-blue-900 dark:text-blue-100">
-                    <span className="font-semibold">How to fix:</span> {action.fix_instructions}
-                  </p>
-                </div>
-              )}
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
-    )}
+      )}
 
-    {/* Summary Stats */}
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-        <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Generation Time</div>
-        <div className="text-2xl font-bold text-gray-900 dark:text-white">
-          {report.processing_duration_ms 
-            ? `${(report.processing_duration_ms / 1000).toFixed(1)}s`
-            : 'N/A'}
+      {/* Summary Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+          <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Generation Time</div>
+          <div className="text-2xl font-bold text-gray-900 dark:text-white">
+            {report.processing_duration_ms 
+              ? `${(report.processing_duration_ms / 1000).toFixed(1)}s`
+              : 'N/A'}
+          </div>
+        </div>
+        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+          <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">API Cost</div>
+          <div className="text-2xl font-bold text-gray-900 dark:text-white">
+            ${report.api_cost_usd ? Number(report.api_cost_usd).toFixed(2) : '0.00'}
+          </div>
+        </div>
+        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+          <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Queries Executed</div>
+          <div className="text-2xl font-bold text-gray-900 dark:text-white">
+            {report.query_count || 0}
+          </div>
+        </div>
+        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+          <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Report Views</div>
+          <div className="text-2xl font-bold text-gray-900 dark:text-white">
+            {report.share_views || 0}
+          </div>
         </div>
       </div>
-      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-        <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">API Cost</div>
-        <div className="text-2xl font-bold text-gray-900 dark:text-white">
-          ${report.api_cost_usd ? Number(report.api_cost_usd).toFixed(2) : '0.00'}
+
+      {/* Competitive Intelligence Summary */}
+      {(competitorAnalysis.competitive_advantages || competitorAnalysis.competitive_weaknesses) && (
+        <div className="bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 rounded-lg border border-indigo-200 dark:border-indigo-800 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+            Competitive Intelligence Summary
+          </h3>
+          <div className="grid md:grid-cols-2 gap-6">
+            {competitorAnalysis.competitive_advantages && competitorAnalysis.competitive_advantages.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <CheckCircle size={18} className="text-green-600 dark:text-green-400" />
+                  <h4 className="font-semibold text-gray-900 dark:text-white">Your Advantages</h4>
+                </div>
+                <ul className="space-y-2">
+                  {competitorAnalysis.competitive_advantages.map((adv: string, idx: number) => (
+                    <li key={idx} className="text-sm text-gray-700 dark:text-gray-300 flex items-start gap-2">
+                      <span className="text-green-500 mt-1">•</span>
+                      <span>{adv}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {competitorAnalysis.competitive_weaknesses && competitorAnalysis.competitive_weaknesses.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <AlertTriangle size={18} className="text-orange-600 dark:text-orange-400" />
+                  <h4 className="font-semibold text-gray-900 dark:text-white">Areas to Improve</h4>
+                </div>
+                <ul className="space-y-2">
+                  {competitorAnalysis.competitive_weaknesses.map((weak: string, idx: number) => (
+                    <li key={idx} className="text-sm text-gray-700 dark:text-gray-300 flex items-start gap-2">
+                      <span className="text-orange-500 mt-1">•</span>
+                      <span>{weak}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
-      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-        <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Queries Executed</div>
-        <div className="text-2xl font-bold text-gray-900 dark:text-white">
-          {report.query_count || 0}
-        </div>
-      </div>
-      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-        <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Report Views</div>
-        <div className="text-2xl font-bold text-gray-900 dark:text-white">
-          {report.share_views || 0}
-        </div>
-      </div>
+      )}
     </div>
-
-    {/* Competitive Intelligence Summary */}
-    {competitorAnalysis.competitive_advantages || competitorAnalysis.competitive_weaknesses && (
-      <div className="bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 rounded-lg border border-indigo-200 dark:border-indigo-800 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-          Competitive Intelligence Summary
-        </h3>
-        <div className="grid md:grid-cols-2 gap-6">
-          {competitorAnalysis.competitive_advantages && competitorAnalysis.competitive_advantages.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <CheckCircle size={18} className="text-green-600 dark:text-green-400" />
-                <h4 className="font-semibold text-gray-900 dark:text-white">Your Advantages</h4>
-              </div>
-              <ul className="space-y-2">
-                {competitorAnalysis.competitive_advantages.map((adv: string, idx: number) => (
-                  <li key={idx} className="text-sm text-gray-700 dark:text-gray-300 flex items-start gap-2">
-                    <span className="text-green-500 mt-1">•</span>
-                    <span>{adv}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {competitorAnalysis.competitive_weaknesses && competitorAnalysis.competitive_weaknesses.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <AlertTriangle size={18} className="text-orange-600 dark:text-orange-400" />
-                <h4 className="font-semibold text-gray-900 dark:text-white">Areas to Improve</h4>
-              </div>
-              <ul className="space-y-2">
-                {competitorAnalysis.competitive_weaknesses.map((weak: string, idx: number) => (
-                  <li key={idx} className="text-sm text-gray-700 dark:text-gray-300 flex items-start gap-2">
-                    <span className="text-orange-500 mt-1">•</span>
-                    <span>{weak}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      </div>
-    )}
-  </div>
   );
 };
