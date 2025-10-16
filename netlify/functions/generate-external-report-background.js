@@ -100,7 +100,7 @@ exports.handler = async (event, context) => {
         report_data: result.reportData,
         overall_score: result.overallScore,
         generation_completed_at: new Date().toISOString(),
-        processing_time_ms: duration,
+        processing_duration_ms: duration,
         api_cost_usd: result.totalCost
       })
       .eq('id', report_id);
