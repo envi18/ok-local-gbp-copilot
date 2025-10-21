@@ -156,10 +156,7 @@ async function processReportBackground(reportId, websiteUrl, providedName, provi
     const websiteContent = await extractWebsiteContent(websiteUrl);
     totalCost += 0.01; // ScrapingBee cost
     
-    if (!websiteContent.success) {
-      throw new Error(`Failed to extract website content: ${websiteContent.error}`);
-    }
-    
+    // websiteContent is the direct object, not wrapped in {success, content, error}
     console.log('✅ Website content extracted');
     processingLog.push('Website content extracted');
 
@@ -167,20 +164,18 @@ async function processReportBackground(reportId, websiteUrl, providedName, provi
     console.log('\n🤖 PHASE 2: Analyzing business with AI...');
     processingLog.push('Analyzing business type and details...');
     
-    const businessAnalysis = await analyzeBusinessWithAI(
-      websiteUrl,
-      websiteContent.content,
-      websiteContent.metadata
-    );
+    // Pass the websiteContent object directly (it already has all the data)
+    const businessAnalysis = await analyzeBusinessWithAI(websiteContent);
     totalCost += 0.05; // OpenAI API cost
     
     console.log('✅ Business analysis complete');
     processingLog.push('Business analysis complete');
 
     // Use AI-detected values or fall back to provided values
-    const finalBusinessName = businessAnalysis.name || providedName || 'Unknown Business';
-    const finalBusinessType = businessAnalysis.type || providedType || 'Unknown';
-    const finalLocation = businessAnalysis.location || providedLocation || 'Unknown';
+    // businessAnalysis returns: business_name, business_type, location_string
+    const finalBusinessName = businessAnalysis.business_name || providedName || 'Unknown Business';
+    const finalBusinessType = businessAnalysis.business_type || providedType || 'Unknown';
+    const finalLocation = businessAnalysis.location_string || providedLocation || 'Unknown';
 
     console.log(`📊 Detected: ${finalBusinessName} (${finalBusinessType}) in ${finalLocation}`);
 
