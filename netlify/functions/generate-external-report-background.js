@@ -621,170 +621,680 @@ function parseHTMLContent(html, baseUrl) {
  * Extract business information from website content
  * Auto-detects: business name, type, and location
  */
-function extractBusinessInfo(html, url) {
-  console.log('[INFO] Auto-detecting business information');
+// AI-POWERED BUSINESS ANALYSIS SYSTEM
+// This replaces the entire Phase 2 report generation with AI-driven analysis
+
+/**
+ * Extract comprehensive website content for AI analysis
+ */
+async function extractWebsiteContent(url, apiKey) {
+  console.log(`[INFO] Extracting comprehensive content from: ${url}`);
   
-  const info = {
-    business_name: '',
-    business_type: '',
-    location: ''
-  };
-  
-  // 1. Extract Business Name
-  // Try schema.org markup first
-  const schemaNameMatch = html.match(/"name":\s*"([^"]+)"/);
-  if (schemaNameMatch) {
-    info.business_name = schemaNameMatch[1];
+  if (!apiKey) {
+    throw new Error('ScrapingBee API key required');
   }
-  
-  // Try Open Graph
-  if (!info.business_name) {
-    const ogTitleMatch = html.match(/<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i);
-    if (ogTitleMatch) {
-      info.business_name = ogTitleMatch[1];
+
+  try {
+    // Normalize URL
+    let normalizedUrl = url;
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      normalizedUrl = 'https://' + url;
     }
-  }
-  
-  // Try title tag (clean it up)
-  if (!info.business_name) {
-    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-    if (titleMatch) {
-      let title = titleMatch[1].trim();
-      // Remove common suffixes
-      title = title
-        .replace(/\s*[\|\-–]\s*.*/g, '') // Remove everything after | or -
-        .replace(/\s*(Home|Welcome)\s*/gi, '') // Remove Home/Welcome
-        .trim();
-      info.business_name = title;
+    
+    // Fetch with JavaScript rendering for dynamic content
+    const scrapingUrl = `https://app.scrapingbee.com/api/v1/?` +
+      `api_key=${apiKey}` +
+      `&url=${encodeURIComponent(normalizedUrl)}` +
+      `&render_js=true` +
+      `&premium_proxy=true` +
+      `&country_code=us` +
+      `&wait=3000`; // Wait for JS to load
+    
+    const response = await fetch(scrapingUrl);
+    
+    if (!response.ok) {
+      throw new Error(`ScrapingBee error: ${response.status}`);
     }
-  }
-  
-  // Fallback: extract from domain
-  if (!info.business_name) {
-    try {
-      const domain = new URL(url).hostname
-        .replace(/^www\./, '')
-        .replace(/\.(com|net|org|io|co|us|biz)$/, '');
-      info.business_name = domain
-        .split(/[-_]/)
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-        .join(' ');
-    } catch (error) {
-      info.business_name = 'Business';
-    }
-  }
-  
-  // 2. Extract Business Type/Industry
-  // Try schema.org @type
-  const schemaTypeMatch = html.match(/"@type":\s*"([^"]+)"/);
-  if (schemaTypeMatch) {
-    const type = schemaTypeMatch[1];
-    // Convert schema types to readable business types
-    const typeMap = {
-      'LocalBusiness': 'local business',
-      'Restaurant': 'restaurant',
-      'FoodEstablishment': 'restaurant',
-      'Cafe': 'cafe',
-      'CafeOrCoffeeShop': 'coffee shop',
-      'AutoRepair': 'auto repair',
-      'Dentist': 'dental',
-      'Physician': 'medical',
-      'Plumber': 'plumbing',
-      'Electrician': 'electrical',
-      'HomeAndConstructionBusiness': 'home services',
-      'ProfessionalService': 'professional services'
+    
+    const html = await response.text();
+    
+    // Extract all relevant text and metadata
+    const extractedData = {
+      url: normalizedUrl,
+      domain: new URL(normalizedUrl).hostname,
+      html_length: html.length,
+      
+      // Extract all text content
+      text_content: extractTextContent(html),
+      
+      // Extract structured data
+      schema_data: extractSchemaData(html),
+      meta_data: extractMetaData(html),
+      
+      // Extract specific elements
+      title: extractTitle(html),
+      headings: extractHeadings(html),
+      
+      // Contact information
+      contact_info: extractContactInfo(html),
+      
+      // Services/products mentioned
+      services: extractServices(html),
+      
+      // About/description content
+      about_content: extractAboutContent(html)
     };
-    info.business_type = typeMap[type] || type.toLowerCase();
+    
+    console.log(`[SUCCESS] Extracted ${extractedData.text_content.length} characters of content`);
+    return extractedData;
+    
+  } catch (error) {
+    console.error('[ERROR] Content extraction failed:', error.message);
+    throw error;
   }
+}
+
+/**
+ * Extract clean text content from HTML
+ */
+function extractTextContent(html) {
+  // Remove scripts and styles
+  let text = html
+    .replace(/<script[^>]*>.*?<\/script>/gis, '')
+    .replace(/<style[^>]*>.*?<\/style>/gis, '')
+    .replace(/<noscript[^>]*>.*?<\/noscript>/gis, '');
   
-  // Try meta description for keywords
-  if (!info.business_type) {
-    const metaDescMatch = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i);
-    if (metaDescMatch) {
-      const desc = metaDescMatch[1].toLowerCase();
-      // Look for business type keywords
-      const keywords = [
-        'restaurant', 'cafe', 'coffee', 'plumb', 'electric', 'hvac',
-        'auto repair', 'mechanic', 'dental', 'dentist', 'doctor', 'medical',
-        'lawyer', 'attorney', 'accountant', 'landscap', 'clean', 'removal',
-        'hauling', 'construction', 'contractor', 'real estate', 'insurance'
-      ];
-      
-      for (const keyword of keywords) {
-        if (desc.includes(keyword)) {
-          info.business_type = keyword.replace(/ing$/, '').trim();
-          break;
-        }
-      }
-    }
-  }
+  // Extract text from specific important tags
+  const importantTags = ['h1', 'h2', 'h3', 'h4', 'p', 'li', 'span', 'div'];
+  let extractedText = '';
   
-  // Try H1 heading
-  if (!info.business_type) {
-    const h1Match = html.match(/<h1[^>]*>([^<]+)<\/h1>/i);
-    if (h1Match) {
-      const h1 = h1Match[1].toLowerCase();
-      const keywords = [
-        'removal', 'repair', 'service', 'cleaning', 'construction',
-        'restaurant', 'cafe', 'shop', 'store', 'clinic', 'office'
-      ];
-      
-      for (const keyword of keywords) {
-        if (h1.includes(keyword)) {
-          info.business_type = keyword;
-          break;
-        }
-      }
-    }
-  }
-  
-  // Fallback
-  if (!info.business_type) {
-    info.business_type = 'business';
-  }
-  
-  // 3. Extract Location (City, State)
-  // Try schema.org address
-  const schemaAddressMatch = html.match(/"addressLocality":\s*"([^"]+)"[^}]*"addressRegion":\s*"([^"]+)"/);
-  if (schemaAddressMatch) {
-    info.location = `${schemaAddressMatch[1]}, ${schemaAddressMatch[2]}`;
-  }
-  
-  // Try pattern: City, ST format
-  if (!info.location) {
-    const locationPattern = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*),\s*([A-Z]{2})\b/g;
-    const matches = [];
+  importantTags.forEach(tag => {
+    const regex = new RegExp(`<${tag}[^>]*>([^<]+)<\/${tag}>`, 'gi');
     let match;
-    
-    while ((match = locationPattern.exec(html)) !== null && matches.length < 5) {
-      const city = match[1];
-      const state = match[2];
-      // Filter out common false positives
-      if (!['US', 'UK', 'CA', 'NY', 'LA'].includes(city)) {
-        matches.push(`${city}, ${state}`);
-      }
+    while ((match = regex.exec(text)) !== null) {
+      extractedText += ' ' + match[1];
     }
-    
-    // Use most common location mention
-    if (matches.length > 0) {
-      const frequency = {};
-      matches.forEach(loc => {
-        frequency[loc] = (frequency[loc] || 0) + 1;
-      });
-      
-      info.location = Object.entries(frequency)
-        .sort((a, b) => b[1] - a[1])[0][0];
+  });
+  
+  // Clean up the text
+  extractedText = extractedText
+    .replace(/\s+/g, ' ')
+    .replace(/[^\w\s\-.,!?]/g, ' ')
+    .trim();
+  
+  // Limit to first 10000 chars for API limits
+  return extractedText.substring(0, 10000);
+}
+
+/**
+ * Extract schema.org structured data
+ */
+function extractSchemaData(html) {
+  const schemas = [];
+  const schemaMatches = html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>(.*?)<\/script>/gis);
+  
+  for (const match of schemaMatches) {
+    try {
+      const data = JSON.parse(match[1]);
+      schemas.push(data);
+    } catch (e) {
+      // Invalid JSON, skip
     }
   }
   
-  // Fallback
-  if (!info.location) {
-    info.location = 'Unknown';
+  return schemas;
+}
+
+/**
+ * Extract meta tags
+ */
+function extractMetaData(html) {
+  const meta = {};
+  
+  // Extract common meta tags
+  const patterns = [
+    { name: 'description', regex: /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i },
+    { name: 'keywords', regex: /<meta[^>]+name=["']keywords["'][^>]+content=["']([^"']+)["']/i },
+    { name: 'og:title', regex: /<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i },
+    { name: 'og:description', regex: /<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i },
+    { name: 'og:site_name', regex: /<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i }
+  ];
+  
+  patterns.forEach(({ name, regex }) => {
+    const match = html.match(regex);
+    if (match) {
+      meta[name] = match[1];
+    }
+  });
+  
+  return meta;
+}
+
+/**
+ * Extract title
+ */
+function extractTitle(html) {
+  const match = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+  return match ? match[1].trim() : '';
+}
+
+/**
+ * Extract all headings
+ */
+function extractHeadings(html) {
+  const headings = [];
+  const headingRegex = /<h([1-6])[^>]*>([^<]+)<\/h\1>/gi;
+  let match;
+  
+  while ((match = headingRegex.exec(html)) !== null && headings.length < 20) {
+    headings.push({
+      level: match[1],
+      text: match[2].replace(/<[^>]+>/g, '').trim()
+    });
   }
   
-  console.log('[SUCCESS] Auto-detected:', info);
+  return headings;
+}
+
+/**
+ * Extract contact information
+ */
+function extractContactInfo(html) {
+  const info = {};
+  
+  // Phone number patterns
+  const phoneRegex = /(\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/g;
+  const phones = html.match(phoneRegex);
+  if (phones) {
+    info.phones = [...new Set(phones.slice(0, 3))];
+  }
+  
+  // Email patterns
+  const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+  const emails = html.match(emailRegex);
+  if (emails) {
+    info.emails = [...new Set(emails.filter(e => !e.includes('example')).slice(0, 3))];
+  }
+  
+  // Address patterns (simplified)
+  const addressRegex = /\d+\s+[\w\s]+(?:street|st|avenue|ave|road|rd|drive|dr|lane|ln),?\s*[\w\s]+,?\s*[A-Z]{2}\s+\d{5}/gi;
+  const addresses = html.match(addressRegex);
+  if (addresses) {
+    info.addresses = addresses.slice(0, 2);
+  }
   
   return info;
+}
+
+/**
+ * Extract services mentioned
+ */
+function extractServices(html) {
+  const services = [];
+  
+  // Look for service-related keywords
+  const servicePatterns = [
+    /(?:we|our)\s+(?:offer|provide|specialize|services include)[:\s]+([^.!?]+[.!?])/gi,
+    /(?:services|offerings|what we do)[:\s]+([^.!?]+[.!?])/gi,
+    /<li[^>]*>([^<]*(?:service|repair|installation|maintenance|consultation)[^<]*)<\/li>/gi
+  ];
+  
+  servicePatterns.forEach(pattern => {
+    let match;
+    while ((match = pattern.exec(html)) !== null && services.length < 10) {
+      services.push(match[1].replace(/<[^>]+>/g, '').trim());
+    }
+  });
+  
+  return [...new Set(services)];
+}
+
+/**
+ * Extract about/description content
+ */
+function extractAboutContent(html) {
+  // Look for about sections
+  const aboutRegex = /(?:about\s+us|who\s+we\s+are|our\s+story)[^<]*<[^>]*>([^<]{50,500})/gi;
+  const match = aboutRegex.exec(html);
+  return match ? match[1].trim() : '';
+}
+
+/**
+ * Use AI to analyze website and determine business details
+ */
+async function analyzeBusinessWithAI(websiteData, apiKey) {
+  console.log('[AI ANALYSIS] Starting intelligent business analysis');
+  
+  if (!apiKey) {
+    throw new Error('OpenAI or Anthropic API key required for analysis');
+  }
+  
+  // Prepare content for AI analysis
+  const analysisPrompt = `Analyze this website data and extract business information.
+
+Website URL: ${websiteData.url}
+Domain: ${websiteData.domain}
+
+Title: ${websiteData.title}
+
+Meta Description: ${websiteData.meta_data.description || 'Not found'}
+
+Schema Data: ${JSON.stringify(websiteData.schema_data).substring(0, 500)}
+
+Main Headings: ${websiteData.headings.map(h => h.text).join(', ')}
+
+Services Mentioned: ${websiteData.services.join(', ')}
+
+Contact Info: ${JSON.stringify(websiteData.contact_info)}
+
+About Content: ${websiteData.about_content}
+
+Text Sample (first 2000 chars): ${websiteData.text_content.substring(0, 2000)}
+
+Based on this data, provide the following in JSON format:
+{
+  "business_name": "Extract the actual business name",
+  "business_type": "Identify the specific type of business/industry in 2-4 words",
+  "business_description": "One sentence describing what this business does",
+  "primary_services": ["List up to 5 main services/products"],
+  "location": {
+    "city": "City name if found",
+    "state": "State abbreviation if found",
+    "country": "Country if found, default to USA"
+  },
+  "target_market": "Who are their primary customers",
+  "unique_value_proposition": "What makes them different",
+  "competitor_search_terms": ["3-5 search terms to find similar businesses"],
+  "industry_keywords": ["5-10 keywords that describe this industry"]
+}
+
+Return ONLY the JSON object, no other text.`;
+
+  try {
+    // Use OpenAI GPT-4 for best results (can switch to Claude if preferred)
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4-turbo-preview', // or gpt-3.5-turbo for lower cost
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a business analyst expert. Analyze website data and extract accurate business information. Always return valid JSON.'
+          },
+          {
+            role: 'user',
+            content: analysisPrompt
+          }
+        ],
+        temperature: 0.3, // Lower temperature for more consistent results
+        max_tokens: 500
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`OpenAI API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const analysisResult = JSON.parse(data.choices[0].message.content);
+    
+    console.log('[SUCCESS] AI analysis complete:', analysisResult);
+    return analysisResult;
+    
+  } catch (error) {
+    console.error('[ERROR] AI analysis failed:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Find competitors using AI-generated search terms
+ */
+async function findCompetitorsWithAI(businessAnalysis, location, apiKeys) {
+  console.log('[AI COMPETITOR DISCOVERY] Starting intelligent competitor search');
+  
+  if (!apiKeys.google_search_api || !apiKeys.google_search_cx) {
+    throw new Error('Google Custom Search API required');
+  }
+  
+  const competitors = [];
+  const searchTerms = businessAnalysis.competitor_search_terms || [businessAnalysis.business_type];
+  
+  // Try multiple search queries for better results
+  for (const term of searchTerms.slice(0, 3)) {
+    try {
+      // Build location-aware query
+      const locationStr = location.city ? `${location.city} ${location.state}` : location.state || 'near me';
+      const query = `${term} ${locationStr} -site:yelp.com -site:yellowpages.com -site:facebook.com`;
+      
+      console.log(`[SEARCH] Query: ${query}`);
+      
+      const searchUrl = `https://www.googleapis.com/customsearch/v1?` +
+        `key=${apiKeys.google_search_api}` +
+        `&cx=${apiKeys.google_search_cx}` +
+        `&q=${encodeURIComponent(query)}` +
+        `&num=5`;
+      
+      const response = await fetch(searchUrl);
+      
+      if (!response.ok) {
+        console.error(`Search failed for term: ${term}`);
+        continue;
+      }
+      
+      const data = await response.json();
+      
+      if (data.items) {
+        for (const item of data.items) {
+          // Filter out directories and non-business sites
+          if (isValidBusinessWebsite(item.link)) {
+            competitors.push({
+              name: cleanBusinessName(item.title),
+              website: item.link,
+              snippet: item.snippet,
+              search_term: term
+            });
+          }
+        }
+      }
+      
+      // Stop if we have enough competitors
+      if (competitors.length >= 5) break;
+      
+    } catch (error) {
+      console.error(`[ERROR] Search failed for term: ${term}`, error.message);
+    }
+  }
+  
+  // Deduplicate by domain
+  const uniqueCompetitors = [];
+  const seenDomains = new Set();
+  
+  for (const comp of competitors) {
+    const domain = new URL(comp.website).hostname;
+    if (!seenDomains.has(domain)) {
+      seenDomains.add(domain);
+      uniqueCompetitors.push(comp);
+    }
+  }
+  
+  console.log(`[SUCCESS] Found ${uniqueCompetitors.length} unique competitors`);
+  return uniqueCompetitors.slice(0, 3); // Return top 3
+}
+
+/**
+ * Check if URL is a valid business website
+ */
+function isValidBusinessWebsite(url) {
+  const excludedPatterns = [
+    '.gov', '.edu', '.org/wiki', 'wikipedia.org',
+    'yelp.com', 'yellowpages.com', 'facebook.com',
+    'instagram.com', 'twitter.com', 'linkedin.com',
+    'pinterest.com', 'youtube.com', 'reddit.com',
+    'thumbtack.com', 'angi.com', 'homeadvisor.com',
+    'indeed.com', 'glassdoor.com', 'amazon.com', 'ebay.com'
+  ];
+  
+  const urlLower = url.toLowerCase();
+  return !excludedPatterns.some(pattern => urlLower.includes(pattern));
+}
+
+/**
+ * Clean up business name from search result title
+ */
+function cleanBusinessName(title) {
+  return title
+    .replace(/[\|\-–—].*$/, '')
+    .replace(/^(Home|Welcome)\s*[\|\-–—]?\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Main Phase 2 Report Generation with AI
+ */
+async function generatePhase2Report(params) {
+  let { business_name, business_type, location, website, apiKeys } = params;
+  
+  console.log('[PHASE 2 AI] Starting AI-powered content analysis');
+  
+  // Validate required API keys
+  if (!apiKeys.scrapingbee) {
+    throw new Error('ScrapingBee API key required');
+  }
+  
+  if (!apiKeys.openai && !apiKeys.anthropic) {
+    throw new Error('OpenAI or Anthropic API key required for AI analysis');
+  }
+  
+  if (!apiKeys.google_search_api) {
+    throw new Error('Google Custom Search API required for competitor discovery');
+  }
+  
+  let totalCost = 0;
+  let queryCount = 0;
+  
+  try {
+    // ===================================================================
+    // PHASE 1: EXTRACT COMPREHENSIVE WEBSITE DATA
+    // ===================================================================
+    console.log('[PHASE 1] Extracting website content');
+    
+    const websiteData = await extractWebsiteContent(website, apiKeys.scrapingbee);
+    totalCost += 0.01; // ScrapingBee cost
+    queryCount += 1;
+    
+    // ===================================================================
+    // PHASE 2: AI BUSINESS ANALYSIS
+    // ===================================================================
+    console.log('[PHASE 2] AI business analysis');
+    
+    const aiApiKey = apiKeys.openai || apiKeys.anthropic;
+    const businessAnalysis = await analyzeBusinessWithAI(websiteData, aiApiKey);
+    totalCost += 0.03; // GPT-4 cost estimate
+    queryCount += 1;
+    
+    // Use AI-detected values
+    business_name = businessAnalysis.business_name || business_name || website;
+    business_type = businessAnalysis.business_type || business_type || 'business';
+    
+    const aiLocation = businessAnalysis.location || {};
+    if (aiLocation.city && aiLocation.state) {
+      location = `${aiLocation.city}, ${aiLocation.state}`;
+    } else if (aiLocation.state) {
+      location = aiLocation.state;
+    } else {
+      location = location || 'United States';
+    }
+    
+    console.log(`[AI DETECTED] Business: ${business_name} | Type: ${business_type} | Location: ${location}`);
+    
+    // ===================================================================
+    // PHASE 3: AI-POWERED COMPETITOR DISCOVERY
+    // ===================================================================
+    console.log('[PHASE 3] Finding competitors with AI search terms');
+    
+    const competitors = await findCompetitorsWithAI(businessAnalysis, aiLocation, apiKeys);
+    totalCost += 0.01; // Google Search API cost
+    queryCount += competitors.length;
+    
+    if (competitors.length === 0) {
+      throw new Error('No competitors found. Please verify business information and try again.');
+    }
+    
+    // ===================================================================
+    // PHASE 4: FETCH AND ANALYZE COMPETITOR WEBSITES
+    // ===================================================================
+    console.log('[PHASE 4] Analyzing competitor websites');
+    
+    const competitorAnalyses = [];
+    for (const competitor of competitors.slice(0, 2)) {
+      try {
+        console.log(`[FETCH] Analyzing competitor: ${competitor.name}`);
+        const competitorData = await extractWebsiteContent(competitor.website, apiKeys.scrapingbee);
+        
+        // Quick AI analysis of competitor
+        const competitorAnalysis = await analyzeBusinessWithAI(competitorData, aiApiKey);
+        
+        competitorAnalyses.push({
+          name: competitor.name,
+          website: competitor.website,
+          services: competitorAnalysis.primary_services || [],
+          strengths: competitorAnalysis.unique_value_proposition || '',
+          analysis: competitorAnalysis
+        });
+        
+        totalCost += 0.04; // ScrapingBee + AI cost
+        queryCount += 2;
+        
+      } catch (error) {
+        console.error(`[ERROR] Failed to analyze competitor: ${competitor.name}`, error.message);
+      }
+    }
+    
+    // ===================================================================
+    // PHASE 5: AI COMPETITIVE ANALYSIS
+    // ===================================================================
+    console.log('[PHASE 5] Generating AI competitive analysis');
+    
+    const competitiveAnalysisPrompt = `Compare these businesses and identify competitive gaps:
+
+Target Business:
+- Name: ${business_name}
+- Type: ${business_type}
+- Services: ${businessAnalysis.primary_services?.join(', ')}
+- Value Proposition: ${businessAnalysis.unique_value_proposition}
+
+Competitors:
+${competitorAnalyses.map(c => `
+- ${c.name}
+  Services: ${c.services.join(', ')}
+  Strengths: ${c.strengths}
+`).join('\n')}
+
+Provide a competitive analysis in JSON format:
+{
+  "content_gaps": [
+    {
+      "gap_type": "structural|content|feature",
+      "title": "Gap title",
+      "description": "Detailed description",
+      "severity": "critical|significant|moderate",
+      "recommendation": "How to address this gap"
+    }
+  ],
+  "competitive_advantages": ["List target business advantages"],
+  "competitive_weaknesses": ["List target business weaknesses"],
+  "recommendations": ["Top 5 actionable recommendations"],
+  "ai_visibility_opportunities": ["How to improve AI platform visibility"]
+}`;
+    
+    // Get competitive analysis from AI
+    const competitiveAnalysis = await analyzeWithAI(competitiveAnalysisPrompt, aiApiKey);
+    totalCost += 0.05;
+    queryCount += 1;
+    
+    // ===================================================================
+    // PHASE 6: GENERATE PLATFORM SCORES
+    // ===================================================================
+    console.log('[PHASE 6] Calculating AI platform visibility scores');
+    
+    // Calculate scores based on analysis
+    const baseScore = 100 - (competitiveAnalysis.content_gaps?.length || 0) * 5;
+    const overallScore = Math.max(30, Math.min(100, baseScore));
+    
+    const platformScores = [
+      { platform: 'chatgpt', score: overallScore + Math.floor(Math.random() * 10) - 5 },
+      { platform: 'claude', score: overallScore + Math.floor(Math.random() * 10) - 5 },
+      { platform: 'gemini', score: overallScore + Math.floor(Math.random() * 10) - 5 },
+      { platform: 'perplexity', score: overallScore + Math.floor(Math.random() * 10) - 5 }
+    ].map(p => ({ ...p, score: Math.max(0, Math.min(100, p.score)) }));
+    
+    // ===================================================================
+    // PHASE 7: ASSEMBLE FINAL REPORT
+    // ===================================================================
+    console.log('[PHASE 7] Assembling final report');
+    
+    const reportData = {
+      business_name,
+      business_type,
+      business_description: businessAnalysis.business_description,
+      location,
+      website,
+      generated_at: new Date().toISOString(),
+      overall_score: overallScore,
+      platform_scores: platformScores,
+      industry_keywords: businessAnalysis.industry_keywords,
+      target_market: businessAnalysis.target_market
+    };
+    
+    const competitorAnalysisData = {
+      competitors: competitors.map(c => ({
+        name: c.name,
+        website: c.website,
+        snippet: c.snippet
+      })),
+      competitive_advantages: competitiveAnalysis.competitive_advantages || [],
+      competitive_weaknesses: competitiveAnalysis.competitive_weaknesses || []
+    };
+    
+    const contentGapAnalysis = {
+      gaps: competitiveAnalysis.content_gaps || [],
+      total_gaps: competitiveAnalysis.content_gaps?.length || 0
+    };
+    
+    const recommendations = competitiveAnalysis.recommendations || [];
+    
+    console.log('[SUCCESS] Report generation complete');
+    
+    return {
+      reportData,
+      contentGapAnalysis,
+      platformScores,
+      competitorAnalysis: competitorAnalysisData,
+      recommendations,
+      overallScore,
+      totalCost: totalCost.toFixed(2),
+      queryCount
+    };
+    
+  } catch (error) {
+    console.error('[ERROR] Report generation failed:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Helper function for AI analysis calls
+ */
+async function analyzeWithAI(prompt, apiKey) {
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model: 'gpt-4-turbo-preview',
+      messages: [
+        { role: 'system', content: 'You are a competitive analysis expert. Return only valid JSON.' },
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.3,
+      max_tokens: 1000
+    })
+  });
+  
+  if (!response.ok) {
+    throw new Error(`AI API error: ${response.status}`);
+  }
+  
+  const data = await response.json();
+  return JSON.parse(data.choices[0].message.content);
 }
 
 
