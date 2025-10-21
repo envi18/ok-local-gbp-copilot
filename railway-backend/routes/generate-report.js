@@ -1,6 +1,6 @@
 // railway-backend/routes/generate-report.js
 // Main report generation endpoint with AI-powered universal business analysis
-// FIXED: Column names to match database schema (target_website, business_location)
+// FIXED: All column names + user context requirement
 
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
@@ -25,6 +25,9 @@ const supabase = createClient(
  * Request body:
  * {
  *   website_url: string (required) - Business website to analyze
+ *   user_id: string (required) - Authenticated user ID
+ *   user_name?: string (optional) - User's display name
+ *   user_email?: string (optional) - User's email
  *   business_name?: string (optional) - Will be auto-detected if not provided
  *   business_type?: string (optional) - Will be auto-detected if not provided
  *   location?: string (optional) - Will be auto-detected if not provided
@@ -36,12 +39,28 @@ router.post('/', async (req, res) => {
   
   try {
     // Validate request
-    const { website_url, business_name, business_type, location } = req.body;
+    const { 
+      website_url, 
+      user_id,
+      user_name,
+      user_email,
+      business_name, 
+      business_type, 
+      location 
+    } = req.body;
     
+    // Validate required fields
     if (!website_url) {
       return res.status(400).json({
         error: 'Missing required field',
         message: 'website_url is required'
+      });
+    }
+
+    if (!user_id) {
+      return res.status(401).json({
+        error: 'Authentication required',
+        message: 'user_id is required'
       });
     }
 
@@ -60,21 +79,25 @@ router.post('/', async (req, res) => {
     }
 
     console.log(`📊 Analyzing: ${website_url}`);
+    console.log(`👤 User: ${user_name || user_id}`);
 
     // Generate unique report ID and share token
     const reportId = crypto.randomUUID();
     const shareToken = crypto.randomBytes(16).toString('hex');
     const shareUrl = `${process.env.FRONTEND_URL || 'https://ok-local-gbp.netlify.app'}/share/report/${shareToken}`;
 
-    // Create initial report record - FIXED: Use correct column names
+    // Create initial report record - ALL COLUMNS CORRECT
     const { error: insertError } = await supabase
       .from('ai_visibility_external_reports')
       .insert({
         id: reportId,
-        target_website: validatedUrl.href, // FIXED: was website_url
+        generated_by_user_id: user_id,                // FIXED: Added user context
+        generated_by_name: user_name || 'Unknown',    // FIXED: Added user name
+        generated_by_email: user_email || null,       // FIXED: Added user email
+        target_website: validatedUrl.href,            // FIXED: was website_url
         business_name: business_name || null,
         business_type: business_type || 'Unknown',
-        business_location: location || 'Unknown', // FIXED: was just 'location'
+        business_location: location || 'Unknown',     // FIXED: was location
         status: 'processing',
         share_token: shareToken,
         share_url: shareUrl,
@@ -161,13 +184,13 @@ async function processReportBackground(reportId, websiteUrl, providedName, provi
 
     console.log(`📊 Detected: ${finalBusinessName} (${finalBusinessType}) in ${finalLocation}`);
 
-    // Update report with detected business info
+    // Update report with detected business info - FIXED: correct column name
     await supabase
       .from('ai_visibility_external_reports')
       .update({
         business_name: finalBusinessName,
         business_type: finalBusinessType,
-        business_location: finalLocation // FIXED: was 'location'
+        business_location: finalLocation  // FIXED: was location
       })
       .eq('id', reportId);
 
@@ -213,7 +236,7 @@ async function processReportBackground(reportId, websiteUrl, providedName, provi
       .map(c => c.website)
       .slice(0, 10); // Store top 10
 
-    // Update report with complete data - FIXED: Use correct column names
+    // Update report with complete data - ALL COLUMNS CORRECT
     const processingTimeSeconds = Math.round((Date.now() - startTime) / 1000);
     
     const { error: updateError } = await supabase
@@ -222,7 +245,7 @@ async function processReportBackground(reportId, websiteUrl, providedName, provi
         status: 'completed',
         business_name: finalBusinessName,
         business_type: finalBusinessType,
-        business_location: finalLocation, // FIXED: was 'location'
+        business_location: finalLocation,        // FIXED: correct column name
         competitor_websites: competitorWebsites,
         overall_score: overallScore,
         report_data: {

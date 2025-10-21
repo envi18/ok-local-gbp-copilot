@@ -1,11 +1,10 @@
 // src/components/pages/AIReportGenerator.tsx
-// FIXED TypeScript errors - Updated to use Railway backend
+// FIXED: Now passes authenticated user context to Railway backend
 
 import { AlertCircle, ArrowLeft, Briefcase, CheckCircle, FileDown, Globe, Loader, MapPin, Share2 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import type { ExternalReport, GenerateExternalReportRequest } from '../../types/externalReport';
-import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { EnhancedAIReportDisplay } from '../ui/EnhancedAIReportDisplay';
@@ -62,14 +61,16 @@ export const AIReportGenerator: React.FC = () => {
 
   const validateForm = (): boolean => {
     if (!formData.target_website.trim()) {
-      setError('Website URL is required');
+      setError('Please enter a website URL');
       return false;
     }
 
     // Validate URL format
     try {
-      new URL(formData.target_website);
-    } catch (e) {
+      new URL(formData.target_website.startsWith('http') 
+        ? formData.target_website 
+        : `https://${formData.target_website}`);
+    } catch {
       setError('Please enter a valid URL (e.g., https://example.com)');
       return false;
     }
@@ -77,241 +78,239 @@ export const AIReportGenerator: React.FC = () => {
     return true;
   };
 
-  // Get report by ID from Supabase
-  const getReportById = async (reportId: string): Promise<ExternalReport | null> => {
-    const { data, error } = await supabase
-      .from('ai_visibility_external_reports')
-      .select('*')
-      .eq('id', reportId)
-      .single();
+  const handleGenerateReport = async () => {
+    if (!validateForm()) return;
 
-    if (error) {
-      console.error('Error fetching report:', error);
-      return null;
-    }
-
-    return data as ExternalReport;
-  };
-
-  const startPolling = (reportId: string) => {
-    console.log(`📊 Starting to poll for report: ${reportId}`);
-    
-    const interval = setInterval(async () => {
-      try {
-        const updatedReport = await getReportById(reportId);
-        
-        if (updatedReport) {
-          console.log(`📊 Report status: ${updatedReport.status}`);
-          
-          if (updatedReport.status === 'completed') {
-            console.log('✅ Report completed!');
-            setReport(updatedReport);
-            setIsGenerating(false);
-            setShowForm(false);
-            setCurrentPhase('complete');
-            clearInterval(interval);
-            setPollingInterval(null);
-          } else if (updatedReport.status === 'error') {
-            console.error('❌ Report generation failed');
-            setError(updatedReport.error_message || 'Report generation failed');
-            setIsGenerating(false);
-            setCurrentPhase('error');
-            clearInterval(interval);
-            setPollingInterval(null);
-          }
-        }
-      } catch (err) {
-        console.error('Error polling for report:', err);
-        // Continue polling even on error
-      }
-    }, 5000); // Poll every 5 seconds
-
-    setPollingInterval(interval);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+    setIsGenerating(true);
     setError('');
-
-    if (!validateForm()) {
-      return;
-    }
+    setCurrentPhase('initializing');
+    setShowForm(false);
 
     try {
-      setIsGenerating(true);
-      setShowForm(false);
-      setCurrentPhase('initializing');
+      // Get authenticated user - CRITICAL FOR RAILWAY BACKEND
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('You must be logged in to generate reports');
+      }
 
-      console.log('🚀 Starting AI-powered report generation...');
-      console.log('📡 Using Railway backend:', RAILWAY_API_URL);
+      // Get user profile for name
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('first_name, last_name')
+        .eq('id', user.id)
+        .single();
 
-      setCurrentPhase('querying');
+      const userName = profile 
+        ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'Unknown User'
+        : 'Unknown User';
 
-      // Call Railway backend directly - it will create the database record
-      const requestPayload = {
-        website_url: formData.target_website,
+      console.log('👤 Authenticated user:', userName, user.email);
+
+      // Ensure URL has protocol
+      const websiteUrl = formData.target_website.startsWith('http')
+        ? formData.target_website
+        : `https://${formData.target_website}`;
+
+      setCurrentPhase('connecting');
+
+      // Call Railway backend with user context - FIXED: Now includes user info
+      const payload = {
+        website_url: websiteUrl,
+        user_id: user.id,                    // CRITICAL: Required by database
+        user_name: userName,                 // CRITICAL: Required by database
+        user_email: user.email || null,      // CRITICAL: Required by database
         business_name: formData.business_name || undefined,
         business_type: formData.business_type || undefined,
         location: formData.business_location || undefined
       };
 
-      console.log('🚀 Calling Railway backend with payload:', requestPayload);
+      console.log('🚀 Calling Railway backend with payload:', payload);
 
       const response = await fetch(`${RAILWAY_API_URL}/api/generate-report`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json'
+        headers: {
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify(requestPayload)
+        body: JSON.stringify(payload)
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(errorData.error || `Backend returned ${response.status}`);
-      }
-
       const result = await response.json();
-      console.log('✅ Railway backend triggered:', result);
 
-      // Start polling for completion
-      if (result.report_id) {
-        startPolling(result.report_id);
-        simulateProgress();
-      } else {
-        throw new Error('No report ID returned from backend');
+      if (!response.ok) {
+        throw new Error(result.message || 'Failed to start report generation');
       }
 
-    } catch (err: any) {
+      console.log('✅ Railway backend response:', result);
+
+      const reportId = result.report_id;
+      setCurrentPhase('processing');
+
+      // Start polling for report completion
+      const interval = setInterval(async () => {
+        try {
+          const { data: reportData, error: fetchError } = await supabase
+            .from('ai_visibility_external_reports')
+            .select('*')
+            .eq('id', reportId)
+            .single();
+
+          if (fetchError) {
+            console.error('Error fetching report:', fetchError);
+            return;
+          }
+
+          console.log('📊 Report status:', reportData?.status);
+
+          // Update platform progress based on status
+          if (reportData?.status === 'processing') {
+            setPlatformProgress(prev => prev.map((p, i) => ({
+              ...p,
+              status: i < 2 ? 'complete' : i === 2 ? 'analyzing' : 'pending'
+            })));
+          }
+
+          if (reportData?.status === 'completed') {
+            clearInterval(interval);
+            setPollingInterval(null);
+            setReport(reportData);
+            setIsGenerating(false);
+            setCurrentPhase('completed');
+            
+            // Mark all platforms as complete
+            setPlatformProgress(prev => prev.map(p => ({
+              ...p,
+              status: 'complete'
+            })));
+          }
+
+          if (reportData?.status === 'error') {
+            clearInterval(interval);
+            setPollingInterval(null);
+            setError(reportData.error_message || 'Report generation failed');
+            setIsGenerating(false);
+            setShowForm(true);
+          }
+        } catch (pollError) {
+          console.error('Polling error:', pollError);
+        }
+      }, 5000); // Poll every 5 seconds
+
+      setPollingInterval(interval);
+
+    } catch (err) {
       console.error('❌ Error generating report:', err);
-      setError(err.message || 'Failed to generate report. Please check your Railway backend is running.');
-      setCurrentPhase('error');
+      setError(err instanceof Error ? err.message : 'Failed to generate report');
       setIsGenerating(false);
+      setShowForm(true);
     }
   };
 
-  const simulateProgress = () => {
-    // Simulate platform analysis progress for better UX
-    setTimeout(() => setPlatformProgress(prev => 
-      prev.map((p, i) => i === 0 ? { ...p, status: 'analyzing' as PlatformStatus } : p)
-    ), 2000);
-
-    setTimeout(() => setPlatformProgress(prev => 
-      prev.map((p, i) => i === 0 ? { ...p, status: 'complete' as PlatformStatus } : i === 1 ? { ...p, status: 'analyzing' as PlatformStatus } : p)
-    ), 20000);
-
-    setTimeout(() => setPlatformProgress(prev => 
-      prev.map((p, i) => i < 2 ? { ...p, status: 'complete' as PlatformStatus } : i === 2 ? { ...p, status: 'analyzing' as PlatformStatus } : p)
-    ), 40000);
-
-    setTimeout(() => setPlatformProgress(prev => 
-      prev.map((p, i) => i < 3 ? { ...p, status: 'complete' as PlatformStatus } : { ...p, status: 'analyzing' as PlatformStatus })
-    ), 60000);
-
-    setTimeout(() => {
-      setCurrentPhase('analyzing');
-    }, 80000);
-  };
-
-  const handleCancel = () => {
+  const handleBack = () => {
+    setShowForm(true);
+    setReport(null);
+    setError('');
+    setIsGenerating(false);
     if (pollingInterval) {
       clearInterval(pollingInterval);
       setPollingInterval(null);
     }
-    setShowForm(true);
-    setIsGenerating(false);
-    setReport(null);
-    setError('');
-    setCurrentPhase('initializing');
-    setPlatformProgress([
-      { name: 'ChatGPT', status: 'pending' },
-      { name: 'Claude', status: 'pending' },
-      { name: 'Gemini', status: 'pending' },
-      { name: 'Perplexity', status: 'pending' }
-    ]);
   };
 
-  const handleExportPDF = async () => {
+  const handleDownloadReport = () => {
     if (!report) return;
-    alert('PDF export functionality will be implemented with jsPDF/react-pdf library');
+    
+    const reportText = `
+AI Visibility Report
+Generated: ${new Date(report.created_at).toLocaleDateString()}
+
+Business: ${report.business_name || 'Unknown'}
+Type: ${report.business_type}
+Location: ${report.business_location}
+Website: ${report.target_website}
+
+Overall Score: ${report.overall_score || 'N/A'}/100
+
+Share Link: ${report.share_url || 'N/A'}
+    `.trim();
+
+    const blob = new Blob([reportText], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ai-visibility-report-${report.business_name?.replace(/\s+/g, '-').toLowerCase() || 'report'}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const handleCopyShareLink = () => {
-    if (!report?.share_url) return;
-    navigator.clipboard.writeText(report.share_url);
-    alert('Share link copied to clipboard!');
+    if (report?.share_url) {
+      navigator.clipboard.writeText(report.share_url);
+      alert('Share link copied to clipboard!');
+    }
   };
 
-  const getPhaseDescription = (phase: string): string => {
-    const descriptions: Record<string, string> = {
-      initializing: 'Setting up analysis...',
-      querying: 'AI analyzing business and finding competitors...',
-      analyzing: 'Generating competitive analysis...',
-      complete: 'Analysis complete!',
-      error: 'An error occurred'
-    };
-    return descriptions[phase] || 'Processing...';
-  };
-
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+  // Show form or loading state
+  if (showForm || isGenerating) {
+    return (
+      <div className="max-w-4xl mx-auto">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
             AI Visibility Report Generator
           </h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-1">
-            Universal AI-powered competitive analysis for ANY business type
+          <p className="text-gray-600 dark:text-gray-400">
+            Generate comprehensive AI visibility analysis for any business
           </p>
         </div>
-        {!showForm && !isGenerating && (
-          <Button onClick={handleCancel} variant="secondary" size="sm">
-            <ArrowLeft size={16} className="mr-2" />
-            New Report
-          </Button>
-        )}
-      </div>
 
-      {/* Form */}
-      {showForm && (
-        <Card>
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="space-y-4">
+        {/* Main Content */}
+        <Card hover={false} className="p-8">
+          {!isGenerating ? (
+            // Form
+            <div className="space-y-6">
+              {error && (
+                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 flex items-start">
+                  <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 mt-0.5 mr-3 flex-shrink-0" />
+                  <p className="text-red-800 dark:text-red-200 text-sm">{error}</p>
+                </div>
+              )}
+
               {/* Website URL - Required */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Business Website URL *
+                  Website URL <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
-                  <Globe size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                  <Globe className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
                   <input
                     type="url"
                     value={formData.target_website}
                     onChange={(e) => handleInputChange('target_website', e.target.value)}
                     placeholder="https://example.com"
                     className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
-                    required
                   />
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Required - AI will automatically detect business type and location
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  AI will automatically detect business name, type, and location
                 </p>
               </div>
 
               {/* Optional Fields */}
-              <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-                  Optional - Leave blank for AI auto-detection
+              <div className="border-t dark:border-gray-700 pt-6">
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                  Optional: Provide additional details (or let AI detect them)
                 </p>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {/* Business Name */}
                   <div>
-                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Business Name
                     </label>
                     <div className="relative">
-                      <Briefcase size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                      <Briefcase className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
                       <input
                         type="text"
                         value={formData.business_name}
@@ -322,9 +321,8 @@ export const AIReportGenerator: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Business Type */}
                   <div>
-                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Business Type
                     </label>
                     <input
@@ -336,13 +334,12 @@ export const AIReportGenerator: React.FC = () => {
                     />
                   </div>
 
-                  {/* Location */}
                   <div>
-                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Location
                     </label>
                     <div className="relative">
-                      <MapPin size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                      <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
                       <input
                         type="text"
                         value={formData.business_location}
@@ -354,130 +351,105 @@ export const AIReportGenerator: React.FC = () => {
                   </div>
                 </div>
               </div>
-            </div>
 
-            {/* Error Display */}
-            {error && (
-              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-                <p className="text-red-600 dark:text-red-400 text-sm">{error}</p>
-              </div>
-            )}
-
-            {/* Submit Button */}
-            <Button
-              type="submit"
-              disabled={isGenerating}
-              className="w-full"
-              size="lg"
-            >
-              Generate AI Report
-            </Button>
-
-            <p className="text-xs text-center text-gray-500 dark:text-gray-400">
-              Powered by OpenAI GPT-4 • Estimated cost: $0.20-0.30 per report
-            </p>
-          </form>
-        </Card>
-      )}
-
-      {/* Progress Display */}
-      {isGenerating && (
-        <Card>
-          <div className="text-center py-12">
-            <Loader className="animate-spin mx-auto mb-4 text-blue-500" size={48} />
-            <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-              {getPhaseDescription(currentPhase)}
-            </h3>
-            <p className="text-gray-600 dark:text-gray-400 mb-8">
-              AI is analyzing your business and competitors. This may take 1-2 minutes.
-            </p>
-
-            {/* Platform Progress */}
-            <div className="max-w-2xl mx-auto space-y-3">
-              {platformProgress.map((platform) => (
-                <div
-                  key={platform.name}
-                  className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg"
+              {/* Generate Button */}
+              <div className="flex justify-end pt-4">
+                <Button
+                  variant="primary"
+                  size="lg"
+                  onClick={handleGenerateReport}
+                  disabled={!formData.target_website.trim()}
                 >
-                  <span className="font-medium text-gray-900 dark:text-white">
-                    {platform.name}
-                  </span>
-                  {platform.status === 'pending' && (
-                    <Badge variant="info" size="sm">Queued</Badge>
-                  )}
-                  {platform.status === 'analyzing' && (
-                    <div className="flex items-center gap-2">
-                      <Loader className="animate-spin" size={16} />
-                      <Badge variant="warning" size="sm">Analyzing</Badge>
-                    </div>
-                  )}
-                  {platform.status === 'complete' && (
-                    <Badge variant="success" size="sm">
-                      <CheckCircle size={14} className="mr-1" />
-                      Complete
-                    </Badge>
-                  )}
-                </div>
-              ))}
+                  Generate AI Report
+                </Button>
+              </div>
             </div>
+          ) : (
+            // Loading State
+            <div className="text-center py-12">
+              <div className="mb-6">
+                <Loader className="w-16 h-16 mx-auto text-blue-500 animate-spin" />
+              </div>
 
-            <Button
-              onClick={handleCancel}
-              variant="secondary"
-              size="sm"
-              className="mt-6"
-            >
-              Cancel
-            </Button>
-          </div>
+              <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+                Generating AI Visibility Report
+              </h3>
+              <p className="text-gray-600 dark:text-gray-400 mb-8">
+                {currentPhase === 'initializing' && 'Initializing analysis...'}
+                {currentPhase === 'connecting' && 'Connecting to AI backend...'}
+                {currentPhase === 'processing' && 'Analyzing with AI platforms...'}
+              </p>
+
+              {/* Platform Progress */}
+              <div className="max-w-md mx-auto space-y-3">
+                {platformProgress.map((platform) => (
+                  <div key={platform.name} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                    <span className="font-medium text-gray-700 dark:text-gray-300">
+                      {platform.name}
+                    </span>
+                    {platform.status === 'complete' && (
+                      <CheckCircle className="w-5 h-5 text-green-500" />
+                    )}
+                    {platform.status === 'analyzing' && (
+                      <Loader className="w-5 h-5 text-blue-500 animate-spin" />
+                    )}
+                    {platform.status === 'pending' && (
+                      <div className="w-5 h-5 rounded-full border-2 border-gray-300 dark:border-gray-600" />
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-6">
+                This typically takes 60-120 seconds
+              </p>
+            </div>
+          )}
         </Card>
-      )}
+      </div>
+    );
+  }
 
-      {/* Report Display */}
-      {report && !isGenerating && (
-        <>
-          {/* Action Buttons */}
-          <div className="flex gap-3">
+  // Show completed report
+  if (report) {
+    return (
+      <div className="max-w-6xl mx-auto">
+        {/* Header with Actions */}
+        <div className="flex items-center justify-between mb-6">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleBack}
+          >
+            <ArrowLeft size={16} className="mr-2" />
+            Generate Another Report
+          </Button>
+
+          <div className="flex gap-2">
             <Button
-              onClick={handleCopyShareLink}
               variant="secondary"
               size="sm"
+              onClick={handleDownloadReport}
+            >
+              <FileDown size={16} className="mr-2" />
+              Download
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleCopyShareLink}
             >
               <Share2 size={16} className="mr-2" />
               Copy Share Link
             </Button>
-            <Button
-              onClick={handleExportPDF}
-              variant="secondary"
-              size="sm"
-            >
-              <FileDown size={16} className="mr-2" />
-              Export PDF
-            </Button>
           </div>
+        </div>
 
-          {/* Report Content */}
-          <EnhancedAIReportDisplay report={report} />
-        </>
-      )}
+        {/* Report Display */}
+        <EnhancedAIReportDisplay report={report} />
+      </div>
+    );
+  }
 
-      {/* Error State */}
-      {currentPhase === 'error' && !isGenerating && (
-        <Card>
-          <div className="text-center py-12">
-            <AlertCircle className="mx-auto mb-4 text-red-500" size={48} />
-            <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-              Generation Failed
-            </h3>
-            <p className="text-gray-600 dark:text-gray-400 mb-6">
-              {error || 'An error occurred while generating the report'}
-            </p>
-            <Button onClick={handleCancel} variant="primary" size="md">
-              Try Again
-            </Button>
-          </div>
-        </Card>
-      )}
-    </div>
-  );
+  return null;
 };
