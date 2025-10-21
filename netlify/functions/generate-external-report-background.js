@@ -5,6 +5,16 @@
 
 const { createClient } = require('@supabase/supabase-js');
 
+// Helper function to generate share tokens
+function generateShareToken() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let token = '';
+  for (let i = 0; i < 32; i++) {
+    token += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return token;
+}
+
 exports.handler = async (event, context) => {
   
   // Allow function to continue after response (background processing)
@@ -120,14 +130,15 @@ const shareToken = generateShareToken();
 const baseUrl = process.env.URL || 'https://ok-local-gbp.netlify.app';
 const shareUrl = `${baseUrl}/share/report/${shareToken}`;
 
+
 // Save to database - INCLUDE business info and share URL
 const { error: updateError } = await supabase
   .from('ai_visibility_external_reports')
   .update({
     status: 'completed',
-    business_name: params.business_name,      // ← ADD THIS
-    business_type: params.business_type,      // ← ADD THIS  
-    target_website: params.website,           // ← ADD THIS
+    business_name: business_name,             // ← FIXED
+    business_type: business_type,             // ← FIXED  
+    target_website: target_website,           // ← FIXED
     report_data: result.reportData,
     content_gap_analysis: result.contentGapAnalysis,
     ai_platform_scores: result.platformScores,
@@ -1591,6 +1602,7 @@ function extractTargetStrengths(targetContent, contentGaps) {
   return strengths.slice(0, 3);
 }
 
+
 /**
  * Extract target business weaknesses from gaps
  */
@@ -1608,16 +1620,4 @@ function extractTargetWeaknesses(contentGaps) {
   });
   
   return weaknesses;
-
-  /**
- * Generate random share token
- */
-function generateShareToken() {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let token = '';
-  for (let i = 0; i < 32; i++) {
-    token += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return token;
-}
 }
