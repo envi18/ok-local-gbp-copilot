@@ -1252,7 +1252,7 @@ function generateTimeline(gaps) {
  * Generate comprehensive Phase 2 report with content-based analysis
  */
 async function generatePhase2Report(params) {
-  const { business_name, business_type, location, website, apiKeys } = params;
+let { business_name, business_type, location, website, apiKeys } = params;
   
   console.log('[PHASE 2 REPORT] Starting 8-phase content analysis');
   
