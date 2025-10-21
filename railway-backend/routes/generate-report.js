@@ -98,7 +98,7 @@ router.post('/', async (req, res) => {
         business_name: business_name || null,
         business_type: business_type || 'Unknown',
         business_location: location || 'Unknown',     // FIXED: was location
-        status: 'processing',
+        status: 'generating',                         // FIXED: was 'processing', must match constraint
         share_token: shareToken,
         share_url: shareUrl,
         share_enabled: true,
@@ -119,7 +119,7 @@ router.post('/', async (req, res) => {
     // Return immediately with report ID (processing continues in background)
     res.status(202).json({
       report_id: reportId,
-      status: 'processing',
+      status: 'generating',
       message: 'Report generation started',
       share_url: shareUrl
     });
