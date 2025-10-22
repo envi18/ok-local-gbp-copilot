@@ -300,6 +300,34 @@ async function processReportBackground(
     // =================================================================
     console.log('\n💾 PHASE 6: Saving report to database...');
     
+    // Format platform scores as object for frontend compatibility
+    const platformScoresObject = {};
+    for (const [platform, score] of Object.entries(competitiveAnalysis.platform_scores)) {
+      platformScoresObject[platform] = score;
+    }
+    
+    // Format content gap analysis with all required fields
+    const formattedContentGapAnalysis = {
+      structural_gaps: competitiveAnalysis.structural_gaps || [],
+      thematic_gaps: competitiveAnalysis.thematic_gaps || [],
+      critical_topic_gaps: competitiveAnalysis.critical_topic_gaps || [],
+      significant_topic_gaps: competitiveAnalysis.significant_topic_gaps || [],
+      under_mentioned_topics: competitiveAnalysis.under_mentioned_topics || [],
+      total_gaps: competitiveAnalysis.total_gaps || 0,
+      severity_breakdown: calculateSeverityBreakdown(competitiveAnalysis),
+      ai_insights: competitiveAnalysis.ai_insights || [],
+      competitive_differentiation: competitiveAnalysis.competitive_differentiation || ''
+    };
+    
+    // Format competitor analysis for frontend
+    const formattedCompetitorAnalysis = {
+      competitors: competitiveAnalysis.top_competitors || [],
+      total_competitors: competitiveAnalysis.competitor_count || 0,
+      top_competitors: competitiveAnalysis.top_competitors || [],
+      competitive_advantages: competitiveAnalysis.brand_strengths || [],
+      competitive_weaknesses: competitiveAnalysis.brand_weaknesses || []
+    };
+    
     const { error: updateError } = await supabase
       .from('ai_visibility_external_reports')
       .update({
@@ -307,16 +335,13 @@ async function processReportBackground(
         
         // Report data (JSONB fields)
         report_data: reportData,
-        content_gap_analysis: contentGapAnalysis,
-        ai_platform_scores: aiPlatformScores,
+        content_gap_analysis: formattedContentGapAnalysis,
+        ai_platform_scores: platformScoresObject,  // Object format: {chatgpt: 67, claude: 62, ...}
         recommendations: recommendations,
         
         // Competitor info
         competitor_websites: competitorWebsites,
-        competitor_analysis: {
-          competitors: competitiveAnalysis.top_competitors,
-          count: competitiveAnalysis.competitor_count
-        },
+        competitor_analysis: formattedCompetitorAnalysis,
         
         // Scores
         overall_score: competitiveAnalysis.overall_score,
@@ -355,6 +380,38 @@ async function processReportBackground(
       })
       .eq('id', reportId);
   }
+}
+
+/**
+ * Calculate severity breakdown for gaps
+ */
+function calculateSeverityBreakdown(competitiveAnalysis) {
+  const allGaps = [
+    ...(competitiveAnalysis.critical_topic_gaps || []),
+    ...(competitiveAnalysis.structural_gaps || []),
+    ...(competitiveAnalysis.significant_topic_gaps || []),
+    ...(competitiveAnalysis.thematic_gaps || []),
+    ...(competitiveAnalysis.under_mentioned_topics || [])
+  ];
+  
+  const breakdown = {
+    critical: 0,
+    significant: 0,
+    moderate: 0
+  };
+  
+  allGaps.forEach(gap => {
+    const severity = gap.severity?.toLowerCase();
+    if (severity === 'critical') {
+      breakdown.critical++;
+    } else if (severity === 'significant') {
+      breakdown.significant++;
+    } else {
+      breakdown.moderate++;
+    }
+  });
+  
+  return breakdown;
 }
 
 export { router as generateReportRoute };
