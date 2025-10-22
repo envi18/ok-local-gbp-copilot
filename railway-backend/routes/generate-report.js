@@ -300,11 +300,15 @@ async function processReportBackground(
     // =================================================================
     console.log('\n💾 PHASE 6: Saving report to database...');
     
-    // Format platform scores as object for frontend compatibility
-    const platformScoresObject = {};
-    for (const [platform, score] of Object.entries(competitiveAnalysis.platform_scores)) {
-      platformScoresObject[platform] = score;
-    }
+    // Format platform scores as ARRAY for frontend compatibility
+    const platformScoresArray = Object.entries(competitiveAnalysis.platform_scores).map(([platform, score]) => ({
+      platform: platform,
+      score: score,
+      status: 'estimated', // We're not doing real AI queries yet
+      details: `Score based on content analysis and competitive comparison`
+    }));
+    
+    console.log('Platform scores formatted:', platformScoresArray);
     
     // Format content gap analysis with all required fields
     const formattedContentGapAnalysis = {
@@ -336,7 +340,7 @@ async function processReportBackground(
         // Report data (JSONB fields)
         report_data: reportData,
         content_gap_analysis: formattedContentGapAnalysis,
-        ai_platform_scores: platformScoresObject,  // Object format: {chatgpt: 67, claude: 62, ...}
+        ai_platform_scores: platformScoresArray,  // ARRAY format: [{platform: 'chatgpt', score: 67, ...}, ...]
         recommendations: recommendations,
         
         // Competitor info
