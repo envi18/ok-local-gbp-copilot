@@ -32,4 +32,12 @@
   "devDependencies": {
     "nodemon": "^3.0.2"
   }
+
+  {
+  "dependencies": {
+    "openai": "^4.20.0",
+    "@anthropic-ai/sdk": "^0.20.0",
+    "@google/generative-ai": "^0.2.0"
+  }
+}
 }

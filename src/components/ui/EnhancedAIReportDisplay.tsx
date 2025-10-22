@@ -1,5 +1,5 @@
 // src/components/ui/EnhancedAIReportDisplay.tsx
-// PHASE A FIXES APPLIED - Complete Fixed Version
+// PHASE B: Updated with Real AI Platform Scores and Knowledge Comparison
 import {
   AlertTriangle,
   CheckCircle,
@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import React, { useState } from 'react';
 import type { ExternalReport } from '../../types/externalReport';
+import { AIKnowledgeScoresTable } from './AIKnowledgeScoresTable';
 import { Badge } from './Badge';
 
 interface EnhancedAIReportDisplayProps {
@@ -129,7 +130,7 @@ export const EnhancedAIReportDisplay: React.FC<EnhancedAIReportDisplayProps> = (
         </div>
       </div>
 
-      {/* Platform Scores - PHASE A FIX #4: Removed "estimated" badge */}
+      {/* Platform Scores - PHASE B: Shows real mention counts */}
       {platformScores.length > 0 && (
         <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
           <div className="flex items-center gap-3 mb-6">
@@ -144,16 +145,30 @@ export const EnhancedAIReportDisplay: React.FC<EnhancedAIReportDisplayProps> = (
             {platformScores.map((platformScore: any, idx: number) => {
               const platform = platformScore.platform || 'unknown';
               const score = platformScore.score || 0;
+              const mentioned = platformScore.mentioned || false;
+              const mentionCount = platformScore.mention_count || 0;
+              const knowledgeLevel = platformScore.knowledge_level || 'None';
               const details = platformScore.details || '';
               
               return (
                 <div key={idx}>
                   <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3">
                       <span className="text-sm font-medium text-gray-700 dark:text-gray-300 capitalize">
                         {platform}
                       </span>
-                      {/* PHASE A FIX: Removed "estimated" badge */}
+                      {/* PHASE B: Show knowledge level badge */}
+                      <Badge 
+                        variant={
+                          knowledgeLevel === 'High' ? 'success' : 
+                          knowledgeLevel === 'Medium' ? 'info' : 
+                          knowledgeLevel === 'Low' ? 'warning' : 
+                          'error'
+                        } 
+                        size="sm"
+                      >
+                        {knowledgeLevel}
+                      </Badge>
                     </div>
                     <span className="text-2xl font-bold text-gray-900 dark:text-white">
                       {score}/100
@@ -162,14 +177,25 @@ export const EnhancedAIReportDisplay: React.FC<EnhancedAIReportDisplayProps> = (
                   <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden mb-2">
                     <div
                       className={`h-full transition-all ${
-                        score >= 70 ? 'bg-green-500' : score >= 40 ? 'bg-yellow-500' : 'bg-red-500'
+                        score >= 70 ? 'bg-green-500' : score >= 40 ? 'bg-yellow-500' : score >= 1 ? 'bg-orange-500' : 'bg-gray-400'
                       }`}
                       style={{ width: `${score}%` }}
                     />
                   </div>
-                  {details && (
-                    <p className="text-xs text-gray-600 dark:text-gray-400">{details}</p>
-                  )}
+                  {/* PHASE B: Show mention count */}
+                  <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
+                    <span>{details}</span>
+                    {mentioned && (
+                      <span className="font-medium text-blue-600 dark:text-blue-400">
+                        Mentioned {mentionCount} time{mentionCount !== 1 ? 's' : ''}
+                      </span>
+                    )}
+                    {!mentioned && (
+                      <span className="text-gray-400 dark:text-gray-500">
+                        Not found
+                      </span>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -243,14 +269,22 @@ export const EnhancedAIReportDisplay: React.FC<EnhancedAIReportDisplayProps> = (
                       </div>
                     </div>
                   )}
-                  <p className="text-xs text-gray-600 dark:text-gray-400 mt-2">
-                    Mentioned times across 0 platforms
-                  </p>
+                  {/* PHASE B: Show AI visibility for competitor */}
+                  {competitor.ai_visibility && (
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mt-2">
+                      Mentioned on {competitor.ai_visibility.total_platforms_mentioned} platform(s)
+                    </p>
+                  )}
                 </div>
               ))}
             </div>
           )}
         </div>
+      )}
+
+      {/* PHASE B: AI Knowledge Scores Comparison Table */}
+      {report.ai_knowledge_comparison && (
+        <AIKnowledgeScoresTable aiKnowledgeComparison={report.ai_knowledge_comparison} />
       )}
 
       {/* PHASE A FIX #5: Split Competitive Intelligence into 2 separate sections */}
