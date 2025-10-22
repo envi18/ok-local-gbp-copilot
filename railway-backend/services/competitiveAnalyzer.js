@@ -122,11 +122,14 @@ async function fetchCompetitorContent(competitors) {
       // Extract website content using ScrapingBee
       const content = await extractWebsiteContent(competitor.website);
       
+      // Get proper business name using AI-powered extraction
+      const properBusinessName = await extractProperBusinessName(content, competitor.website);
+      
       // Analyze features
       const features = analyzeWebsiteFeatures(content);
       
       competitorData.push({
-        name: competitor.name,
+        name: properBusinessName, // Use AI-extracted name instead of search result title
         website: competitor.website,
         description: competitor.description,
         content: content,
@@ -135,7 +138,7 @@ async function fetchCompetitorContent(competitors) {
         strengths: generateCompetitorStrengths(features, content)
       });
       
-      console.log(`   ✓ ${competitor.name}: ${features.serviceCount} services, ${features.featureScore}/100`);
+      console.log(`   ✓ ${properBusinessName}: ${features.serviceCount} services, ${features.featureScore}/100`);
       
       // Rate limit between requests
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -147,6 +150,177 @@ async function fetchCompetitorContent(competitors) {
   }
   
   return competitorData;
+}
+
+/**
+ * Extract proper business name using AI and footer detection
+ * Prioritizes: Footer copyright > Schema.org > AI analysis > Fallback to domain
+ */
+async function extractProperBusinessName(websiteContent, websiteUrl) {
+  console.log(`   🔍 Extracting proper business name from ${websiteUrl}...`);
+  
+  // Method 1: Check footer copyright (highest confidence)
+  if (websiteContent.contact_info?.business_name_from_footer) {
+    const footerName = websiteContent.contact_info.business_name_from_footer;
+    
+    if (footerName.from_copyright && footerName.confidence === 'high') {
+      console.log(`   ✅ Using copyright name: "${footerName.from_copyright}"`);
+      return footerName.from_copyright;
+    }
+    
+    if (footerName.from_address_block && footerName.confidence === 'medium') {
+      console.log(`   ✅ Using address block name: "${footerName.from_address_block}"`);
+      return footerName.from_address_block;
+    }
+    
+    if (footerName.from_footer_text) {
+      console.log(`   ✅ Using footer text name: "${footerName.from_footer_text}"`);
+      return footerName.from_footer_text;
+    }
+  }
+  
+  // Method 2: Check Schema.org structured data
+  if (websiteContent.schema_data && websiteContent.schema_data.length > 0) {
+    for (const schema of websiteContent.schema_data) {
+      if (schema.name && typeof schema.name === 'string' && schema.name.length >= 5) {
+        console.log(`   ✅ Using schema name: "${schema.name}"`);
+        return cleanBusinessName(schema.name);
+      }
+    }
+  }
+  
+  // Method 3: Use AI to analyze the website and extract business name
+  try {
+    const aiExtractedName = await extractBusinessNameWithAI(websiteContent);
+    if (aiExtractedName) {
+      console.log(`   ✅ Using AI-extracted name: "${aiExtractedName}"`);
+      return aiExtractedName;
+    }
+  } catch (error) {
+    console.log(`   ⚠️ AI extraction failed, using fallback`);
+  }
+  
+  // Method 4: Fallback - clean up the title
+  if (websiteContent.title) {
+    const cleanedTitle = cleanBusinessName(websiteContent.title);
+    console.log(`   ⚠️ Using cleaned title: "${cleanedTitle}"`);
+    return cleanedTitle;
+  }
+  
+  // Method 5: Last resort - use domain name
+  const domain = new URL(websiteUrl).hostname.replace(/^www\./, '');
+  const domainName = domain.split('.')[0];
+  const fallbackName = domainName.charAt(0).toUpperCase() + domainName.slice(1);
+  console.log(`   ⚠️ Using domain fallback: "${fallbackName}"`);
+  return fallbackName;
+}
+
+/**
+ * Use AI (GPT-4) to extract the actual business name from website content
+ */
+async function extractBusinessNameWithAI(websiteContent) {
+  try {
+    // Build a focused prompt with key content
+    const footerHints = websiteContent.contact_info?.business_name_from_footer;
+    const copyrightHint = footerHints?.from_copyright || '';
+    const addressHint = footerHints?.from_address_block || '';
+    
+    const prompt = `Extract the actual business name from this website content:
+
+Title: ${websiteContent.title}
+Meta Description: ${websiteContent.meta_description || 'N/A'}
+
+First Heading (H1): ${websiteContent.headings?.[0]?.text || 'N/A'}
+
+Footer/Copyright Text: ${copyrightHint || addressHint || 'N/A'}
+
+Text Sample: ${websiteContent.text_content?.substring(0, 500) || 'N/A'}
+
+Return ONLY the business name, nothing else. 
+The business name should be:
+- 2-10 words max
+- The actual company/brand name (not a generic headline)
+- Clean and professional (remove taglines, locations unless part of name)
+
+Example GOOD responses:
+- "Junk King San Diego"
+- "The Wreckin Haul"
+- "Happy Hauling"
+
+Example BAD responses:
+- "Junk Removal Services in Escondido, CA" (generic headline)
+- "Best Junk Removal" (not a business name)
+- "Home - Junk Removal" (page title, not business name)
+
+Business name:`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4-turbo-preview',
+      temperature: 0.1, // Low temperature for consistency
+      max_tokens: 50,
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a business name extraction expert. Extract only the actual business/company name, not headlines or generic descriptions.'
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ]
+    });
+
+    const extractedName = completion.choices[0].message.content.trim();
+    
+    // Validate the extracted name
+    if (extractedName && 
+        extractedName.length >= 5 && 
+        extractedName.length <= 100 &&
+        !extractedName.toLowerCase().includes('junk removal services') &&
+        !extractedName.toLowerCase().includes('best junk removal')) {
+      return extractedName;
+    }
+    
+    return null;
+    
+  } catch (error) {
+    console.error('AI name extraction failed:', error.message);
+    return null;
+  }
+}
+
+/**
+ * Clean business name - remove common separators, suffixes
+ */
+function cleanBusinessName(name) {
+  if (!name) return 'Unknown Business';
+  
+  // Remove common separators and everything after
+  let cleaned = name.split('|')[0].split('-')[0].split('–')[0].trim();
+  
+  // Remove "Home" prefix
+  cleaned = cleaned.replace(/^Home\s*[-–—]?\s*/i, '');
+  
+  // Remove location suffixes in parentheses
+  cleaned = cleaned.replace(/\s*\([^)]+\)$/g, '');
+  
+  // Remove common suffixes
+  cleaned = cleaned.replace(/\s*,?\s*(LLC|Inc|Corp|Ltd|Co\.)\.?$/i, '').trim();
+  
+  // Remove generic suffixes like "- Services", "- Home"
+  cleaned = cleaned.replace(/\s*[-–—]\s*(Services|Home|Welcome|Official Site)$/i, '').trim();
+  
+  // Limit length
+  if (cleaned.length > 60) {
+    cleaned = cleaned.substring(0, 60).trim() + '...';
+  }
+  
+  // If we ended up with something too short or generic, return original
+  if (cleaned.length < 3 || cleaned.toLowerCase() === 'home') {
+    return name.substring(0, 60);
+  }
+  
+  return cleaned;
 }
 
 /**

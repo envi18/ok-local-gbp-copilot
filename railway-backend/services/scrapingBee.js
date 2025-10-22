@@ -1,11 +1,13 @@
 // railway-backend/services/scrapingBee.js
-// Website content extraction using ScrapingBee API
+// ENHANCED: Website content extraction with footer business name detection
 
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 
 /**
  * Extract comprehensive website content for AI analysis
+ * NOW INCLUDES: Footer business name extraction for accurate competitor names
+ * 
  * @param {string} url - Website URL to scrape
  * @returns {Promise<Object>} Extracted website data
  */
@@ -54,7 +56,7 @@ export async function extractWebsiteContent(url) {
       // Text content
       text_content: extractTextContent($),
       
-      // Contact information
+      // Contact information + FOOTER BUSINESS NAME
       contact_info: extractContactInfo($, html),
       
       // Services/products mentioned
@@ -75,6 +77,7 @@ export async function extractWebsiteContent(url) {
 
     console.log(`✅ Content extracted successfully`);
     console.log(`   Title: ${websiteData.title}`);
+    console.log(`   Footer Business Name: ${websiteData.contact_info.business_name_from_footer?.from_copyright || 'Not found'}`);
     console.log(`   Text length: ${websiteData.text_content.length} chars`);
     console.log(`   Services found: ${websiteData.services.length}`);
     
@@ -167,12 +170,14 @@ function extractTextContent($) {
 
 /**
  * Extract contact information
+ * ENHANCED: Now includes business name from footer
  */
 function extractContactInfo($, html) {
   const contact = {
     emails: [],
     phones: [],
-    addresses: []
+    addresses: [],
+    business_name_from_footer: null  // NEW: Extract business name from footer
   };
   
   // Email patterns
@@ -198,7 +203,122 @@ function extractContactInfo($, html) {
     }
   }
   
+  // NEW: Extract business name from footer
+  contact.business_name_from_footer = extractBusinessNameFromFooter($);
+  
   return contact;
+}
+
+/**
+ * NEW: Extract business name from footer area
+ * Looks in footer, copyright text, and address blocks
+ * 
+ * Returns object with multiple attempts and confidence level
+ */
+function extractBusinessNameFromFooter($) {
+  const businessName = {
+    from_copyright: null,
+    from_footer_text: null,
+    from_address_block: null,
+    confidence: 'none'
+  };
+  
+  // Method 1: Look for copyright text (most reliable)
+  // Examples:
+  // "© 2024 Junk King San Diego"
+  // "Copyright © 2025 Junk and Trash Hauling San Diego. All rights reserved."
+  // "Copyright © 2024 The Wreckin Haul — Junk Removal"
+  $('footer').find('*').each((i, elem) => {
+    const text = $(elem).text().trim();
+    
+    // Copyright patterns
+    const copyrightPatterns = [
+      /©\s*(?:\d{4})?\s*([^.©]+?)(?:\s*[-–—]\s*|\s*\.\s*|All Rights Reserved|\s*$)/i,
+      /Copyright\s*©?\s*(?:\d{4})?\s*([^.©]+?)(?:\s*[-–—]\s*|\s*\.\s*|All Rights Reserved|\s*$)/i
+    ];
+    
+    for (const pattern of copyrightPatterns) {
+      const match = text.match(pattern);
+      if (match && match[1]) {
+        let name = match[1]
+          .replace(/\s*All Rights Reserved.*/i, '')
+          .replace(/\s*[-–—]\s*.*/, '')
+          .replace(/\s*\.\s*$/, '')
+          .trim();
+        
+        // Clean up common suffixes
+        name = name.replace(/\s*,?\s*(Inc|LLC|Ltd|Corp|Co\.)\.?$/i, '');
+        
+        // Validate: reasonable length, no URLs
+        if (name.length >= 5 && name.length <= 80 && !name.includes('http') && !name.includes('www')) {
+          businessName.from_copyright = name;
+          businessName.confidence = 'high';
+          console.log(`   ✓ Found copyright name: "${name}"`);
+          return false; // Break the loop
+        }
+      }
+    }
+  });
+  
+  // Method 2: Look for text immediately above address in footer
+  if (!businessName.from_copyright) {
+    $('footer').find('address').each((i, elem) => {
+      // Get previous sibling or parent text
+      const prevText = $(elem).prev().text().trim();
+      const parentText = $(elem).parent().contents().first().text().trim();
+      
+      const candidateName = prevText || parentText;
+      
+      // If it's a reasonable business name length
+      if (candidateName.length >= 5 && candidateName.length <= 80 && 
+          !candidateName.includes('http') && !candidateName.includes('@') &&
+          !candidateName.match(/\d{3}[-.\s]?\d{3}[-.\s]?\d{4}/)) { // Not a phone number
+        
+        businessName.from_address_block = candidateName;
+        businessName.confidence = 'medium';
+        console.log(`   ✓ Found address block name: "${candidateName}"`);
+        return false;
+      }
+    });
+  }
+  
+  // Method 3: Look for strong/bold text in footer (often business name)
+  if (!businessName.from_copyright && !businessName.from_address_block) {
+    const footerBoldSelectors = ['footer strong', 'footer b', 'footer .brand', 'footer .company-name', 'footer h3', 'footer h4'];
+    
+    for (const selector of footerBoldSelectors) {
+      $(selector).first().each((i, elem) => {
+        const text = $(elem).text().trim();
+        if (text.length >= 5 && text.length <= 80 && !text.includes('http')) {
+          businessName.from_footer_text = text;
+          businessName.confidence = 'low';
+          console.log(`   ✓ Found footer bold name: "${text}"`);
+          return false;
+        }
+      });
+      
+      if (businessName.from_footer_text) break;
+    }
+  }
+  
+  // If nothing found, try looking for schema.org name
+  if (!businessName.from_copyright && !businessName.from_address_block && !businessName.from_footer_text) {
+    $('script[type="application/ld+json"]').each((i, elem) => {
+      try {
+        const schema = JSON.parse($(elem).html());
+        if (schema.name && typeof schema.name === 'string') {
+          businessName.from_footer_text = schema.name;
+          businessName.confidence = 'medium';
+          console.log(`   ✓ Found schema name: "${schema.name}"`);
+          return false;
+        }
+      } catch (e) {
+        // Invalid JSON, continue
+      }
+    });
+  }
+  
+  return businessName;
 }
 
 /**
@@ -234,89 +354,95 @@ function extractServices($, html) {
     const regex = new RegExp(keyword + '([^.]+)', 'i');
     const match = html.match(regex);
     if (match && match[1]) {
-      const items = match[1].split(/[,\n]/).slice(0, 5);
+      const items = match[1].split(',');
       items.forEach(item => {
         const cleaned = item.trim();
-        if (cleaned && cleaned.length < 100) {
+        if (cleaned.length > 3 && cleaned.length < 100) {
           services.add(cleaned);
         }
       });
     }
   });
   
-  return Array.from(services).slice(0, 10); // Limit to 10 services
+  return Array.from(services).slice(0, 20); // Limit to 20 services
 }
 
 /**
- * Extract about/company description
+ * Extract about content
  */
 function extractAboutContent($, html) {
-  // Try various about section patterns
   const aboutSelectors = [
-    'section[class*="about"]',
-    'div[class*="about"]',
-    '#about',
-    'section[id*="about"]'
+    'section#about',
+    'section.about',
+    '[id*="about"]',
+    '[class*="about"]'
   ];
   
+  let aboutText = '';
+  
   for (const selector of aboutSelectors) {
-    const content = $(selector).text().trim();
-    if (content && content.length > 50) {
-      return content.substring(0, 1000); // Limit to 1000 chars
+    const elem = $(selector).first();
+    if (elem.length) {
+      aboutText = elem.text().trim();
+      break;
     }
   }
   
-  // Fallback: look for about keyword in text
-  const aboutRegex = /about\s+us:?\s*([^<]{100,500})/i;
-  const match = html.match(aboutRegex);
-  if (match && match[1]) {
-    return match[1].trim();
+  // Fallback: look for "about" keyword in text
+  if (!aboutText) {
+    const aboutMatch = html.match(/about us[^<]*<\/h\d>(.*?)<(?:h\d|section|div class)/is);
+    if (aboutMatch && aboutMatch[1]) {
+      aboutText = aboutMatch[1].replace(/<[^>]+>/g, '').trim();
+    }
   }
   
-  return '';
+  return aboutText.substring(0, 1000); // Limit to 1000 chars
 }
 
 /**
  * Extract links (internal or external)
  */
 function extractLinks($, domain, internal = true) {
-  const links = new Set();
+  const links = [];
   
   $('a[href]').each((i, elem) => {
     const href = $(elem).attr('href');
+    const text = $(elem).text().trim();
+    
     if (!href || href.startsWith('#') || href.startsWith('javascript:')) {
-      return;
+      return; // Skip
     }
     
-    try {
-      const url = new URL(href, `https://${domain}`);
-      const isInternal = url.hostname.includes(domain);
-      
-      if ((internal && isInternal) || (!internal && !isInternal)) {
-        links.add(url.href);
-      }
-    } catch (e) {
-      // Invalid URL
+    const isInternal = href.startsWith('/') || href.includes(domain);
+    
+    if ((internal && isInternal) || (!internal && !isInternal)) {
+      links.push({
+        url: href.startsWith('http') ? href : `https://${domain}${href}`,
+        text: text.substring(0, 100)
+      });
     }
   });
   
-  return Array.from(links).slice(0, 20); // Limit to 20 links
+  return links.slice(0, 50); // Limit to 50 links
 }
 
 /**
- * Extract image information
+ * Extract images
  */
 function extractImages($) {
   const images = [];
   
-  $('img[src]').slice(0, 10).each((i, elem) => {
+  $('img[src]').each((i, elem) => {
     const src = $(elem).attr('src');
     const alt = $(elem).attr('alt') || '';
     
-    if (src && !src.startsWith('data:')) {
-      images.push({ src, alt });
+    if (src && !src.includes('data:image')) {
+      images.push({
+        src: src,
+        alt: alt
+      });
     }
   });
   
-  return images;
+  return images.slice(0, 20); // Limit to 20 images
 }
