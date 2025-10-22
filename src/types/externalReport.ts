@@ -3,6 +3,17 @@
 
 export type ExternalReportStatus = 'pending' | 'generating' | 'completed' | 'error';
 
+/**
+ * Report Generation Request
+ */
+export interface GenerateExternalReportRequest {
+  target_website: string;
+  business_name?: string;
+  business_type: string;
+  business_location: string;
+  competitor_websites?: string[];
+}
+
 export interface ExternalReport {
   id: string;
   generated_by_user_id: string;
