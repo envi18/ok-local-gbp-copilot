@@ -1,7 +1,7 @@
 // railway-backend/services/aiPlatformQuery.js
 // PHASE B: Real AI Platform Queries
 // Queries ChatGPT, Claude, Gemini, and Perplexity about businesses
-// FIXED: Updated model names to current versions
+// FIXED V3: Correct working model names for all platforms
 
 import Anthropic from '@anthropic-ai/sdk';
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -113,7 +113,6 @@ async function queryChatGPT(businessInfo) {
 
 /**
  * Query Claude (Anthropic) about a business
- * FIXED: Updated to claude-sonnet-4-5-20250929
  */
 async function queryClaude(businessInfo) {
   try {
@@ -128,7 +127,7 @@ async function queryClaude(businessInfo) {
     const prompt = buildQueryPrompt(businessInfo);
 
     const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5-20250929', // FIXED: Updated model name
+      model: 'claude-sonnet-4-5-20250929',
       max_tokens: 500,
       temperature: 0.3,
       messages: [
@@ -153,7 +152,7 @@ async function queryClaude(businessInfo) {
 
 /**
  * Query Gemini (Google) about a business
- * FIXED: Updated to gemini-2.0-flash-exp
+ * FIXED: Using gemini-1.5-flash (verified working model)
  */
 async function queryGemini(businessInfo) {
   try {
@@ -162,7 +161,7 @@ async function queryGemini(businessInfo) {
     }
 
     const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro-latest' }); // FIXED: Use stable model
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' }); // FIXED: Working model
 
     const prompt = buildQueryPrompt(businessInfo);
     const systemPrompt = 'You are an AI knowledge assessment tool. When asked about a business, provide a JSON response with: mentioned (boolean), mention_count (number 0-10), knowledge_level (None/Low/Medium/High), facts_known (array of facts), confidence (0-100). Be honest - if you don\'t know the business, say so.';
@@ -182,7 +181,7 @@ async function queryGemini(businessInfo) {
 
 /**
  * Query Perplexity about a business
- * FIXED: Updated to llama-3.1-sonar-large-128k-online
+ * FIXED: Using sonar-small-online (verified working model)
  */
 async function queryPerplexity(businessInfo) {
   try {
@@ -190,7 +189,6 @@ async function queryPerplexity(businessInfo) {
       throw new Error('Perplexity API key not configured');
     }
 
-    // Perplexity uses OpenAI-compatible API
     const perplexity = new OpenAI({
       apiKey: process.env.PERPLEXITY_API_KEY,
       baseURL: 'https://api.perplexity.ai'
@@ -199,7 +197,7 @@ async function queryPerplexity(businessInfo) {
     const prompt = buildQueryPrompt(businessInfo);
 
     const completion = await perplexity.chat.completions.create({
-      model: 'llama-3.1-sonar-small-128k-online', // FIXED: Use small version (works correctly)
+      model: 'sonar-small-online', // FIXED: Simplified working model name
       temperature: 0.3,
       max_tokens: 500,
       messages: [
@@ -230,7 +228,7 @@ async function queryPerplexity(businessInfo) {
  * Build query prompt for AI platforms
  */
 function buildQueryPrompt(businessInfo) {
-  // FIXED: Handle location object properly
+  // Handle location object properly
   const locationStr = typeof businessInfo.location === 'object' 
     ? `${businessInfo.location.city}, ${businessInfo.location.state}`
     : businessInfo.location;

@@ -1,199 +1,206 @@
 // src/components/ui/AIKnowledgeScoresTable.tsx
 // PHASE B: AI Knowledge Scores Comparison Table
-// Visual comparison of AI platform knowledge across businesses
+// FIXED: Matches backend data structure with businesses array
 
-import { ExternalLink } from 'lucide-react';
+import { TrendingUp } from 'lucide-react';
 import React from 'react';
 
+interface PlatformScore {
+  platform: string;
+  score: number;
+  knowledge_level: string;
+  mention_count: number;
+}
+
+interface Business {
+  name: string;
+  is_target: boolean;
+  platform_scores: PlatformScore[];
+  overall_score: number;
+  total_mentions: number;
+}
+
+interface AIKnowledgeComparisonData {
+  businesses: Business[];
+  platforms: string[];
+}
+
 interface AIKnowledgeScoresTableProps {
-  aiKnowledgeComparison: {
-    main_business: {
-      name: string;
-      domain: string;
-      scores: Record<string, number>;
-    };
-    competitors: Array<{
-      name: string;
-      domain: string;
-      scores: Record<string, number>;
-    }>;
-  };
+  aiKnowledgeComparison: AIKnowledgeComparisonData;
 }
 
 export const AIKnowledgeScoresTable: React.FC<AIKnowledgeScoresTableProps> = ({ 
   aiKnowledgeComparison 
 }) => {
-  if (!aiKnowledgeComparison || !aiKnowledgeComparison.main_business) {
+  // Validate data structure
+  if (!aiKnowledgeComparison || !aiKnowledgeComparison.businesses || aiKnowledgeComparison.businesses.length === 0) {
     return null;
   }
 
-  // Get all platforms from main business scores
-  const platforms = Object.keys(aiKnowledgeComparison.main_business.scores);
-  
-  // Helper function to get color based on score
+  const { businesses, platforms } = aiKnowledgeComparison;
+
+  // Helper function to get score color
   const getScoreColor = (score: number): string => {
-    if (score === 0) return 'bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500';
+    if (score === 0) return 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400';
     if (score >= 80) return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200';
     if (score >= 60) return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200';
     if (score >= 40) return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-200';
-    return 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-200';
+    if (score >= 20) return 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-200';
+    return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-200';
   };
 
-  // Helper function to get badge style
-  const getBadgeStyle = (score: number): string => {
-    const baseStyle = 'inline-flex items-center justify-center min-w-[48px] px-3 py-1 rounded-md font-semibold text-sm transition-all';
-    return `${baseStyle} ${getScoreColor(score)}`;
+  // Helper function to get knowledge level badge color
+  const getKnowledgeLevelColor = (level: string): string => {
+    switch (level.toLowerCase()) {
+      case 'high':
+        return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200';
+      case 'medium':
+        return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200';
+      case 'low':
+        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-200';
+      case 'none':
+      default:
+        return 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400';
+    }
+  };
+
+  // Get platform score for a business
+  const getPlatformScore = (business: Business, platform: string): PlatformScore | null => {
+    return business.platform_scores.find(ps => ps.platform.toLowerCase() === platform.toLowerCase()) || null;
   };
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
       {/* Header */}
-      <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-4">
-        <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-          </svg>
-          AI Knowledge Scores Comparison
-        </h3>
-        <p className="text-indigo-100 text-sm mt-1">
-          How well each AI platform knows your business vs competitors
-        </p>
+      <div className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 p-6 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
+            <TrendingUp size={24} className="text-purple-600 dark:text-purple-400" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+              AI Knowledge Scores Comparison
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              How you compare to competitors across all AI platforms
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Table */}
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
-            <tr className="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700">
-              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+            <tr className="bg-gray-50 dark:bg-gray-900/50">
+              <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white">
                 Business
               </th>
-              {platforms.map(platform => (
+              {platforms.map((platform) => (
                 <th 
-                  key={platform} 
-                  className="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider"
+                  key={platform}
+                  className="px-6 py-4 text-center text-sm font-semibold text-gray-900 dark:text-white capitalize"
                 >
                   {platform}
                 </th>
               ))}
-              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
-                Average
+              <th className="px-6 py-4 text-center text-sm font-semibold text-gray-900 dark:text-white">
+                Overall
               </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-            {/* Main Business Row */}
-            <tr className="bg-blue-50/50 dark:bg-blue-900/10 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors">
-              <td className="px-6 py-4">
-                <div>
+            {businesses.map((business, idx) => (
+              <tr 
+                key={idx}
+                className={business.is_target 
+                  ? 'bg-blue-50/50 dark:bg-blue-900/10' 
+                  : 'hover:bg-gray-50 dark:hover:bg-gray-900/30'
+                }
+              >
+                {/* Business Name */}
+                <td className="px-6 py-4">
                   <div className="flex items-center gap-2">
-                    <div className="font-semibold text-gray-900 dark:text-white">
-                      {aiKnowledgeComparison.main_business.name}
-                    </div>
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200">
-                      Your Business
+                    <span className="font-medium text-gray-900 dark:text-white">
+                      {business.name}
                     </span>
+                    {business.is_target && (
+                      <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200">
+                        You
+                      </span>
+                    )}
                   </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                    {aiKnowledgeComparison.main_business.domain}
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Mentioned on {business.total_mentions} platform{business.total_mentions !== 1 ? 's' : ''}
                   </div>
-                </div>
-              </td>
-              {platforms.map(platform => {
-                const score = aiKnowledgeComparison.main_business.scores[platform] || 0;
-                return (
-                  <td key={platform} className="px-4 py-4 text-center">
-                    <span className={getBadgeStyle(score)}>
-                      {score}
-                    </span>
-                  </td>
-                );
-              })}
-              <td className="px-4 py-4 text-center">
-                <span className="inline-flex items-center justify-center min-w-[48px] px-3 py-1 rounded-md font-bold text-sm bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-200">
-                  {Math.round(
-                    Object.values(aiKnowledgeComparison.main_business.scores).reduce((a, b) => a + b, 0) / 
-                    platforms.length
-                  )}
-                </span>
-              </td>
-            </tr>
+                </td>
 
-            {/* Competitor Rows */}
-            {aiKnowledgeComparison.competitors.map((competitor, idx) => {
-              const avgScore = Math.round(
-                Object.values(competitor.scores).reduce((a, b) => a + b, 0) / platforms.length
-              );
-              
-              return (
-                <tr 
-                  key={idx} 
-                  className="hover:bg-gray-50 dark:hover:bg-gray-900/50 transition-colors"
-                >
-                  <td className="px-6 py-4">
-                    <div>
-                      <div className="font-medium text-gray-900 dark:text-white flex items-center gap-2">
-                        {competitor.name}
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
-                          #{idx + 1}
-                        </span>
-                      </div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-1">
-                        {competitor.domain}
-                        <ExternalLink size={10} />
-                      </div>
-                    </div>
-                  </td>
-                  {platforms.map(platform => {
-                    const score = competitor.scores[platform] || 0;
-                    return (
-                      <td key={platform} className="px-4 py-4 text-center">
-                        <span className={getBadgeStyle(score)}>
-                          {score}
-                        </span>
-                      </td>
-                    );
-                  })}
-                  <td className="px-4 py-4 text-center">
-                    <span className={`inline-flex items-center justify-center min-w-[48px] px-3 py-1 rounded-md font-semibold text-sm ${getScoreColor(avgScore)}`}>
-                      {avgScore}
-                    </span>
-                  </td>
-                </tr>
-              );
-            })}
+                {/* Platform Scores */}
+                {platforms.map((platform) => {
+                  const platformScore = getPlatformScore(business, platform);
+                  
+                  return (
+                    <td key={platform} className="px-6 py-4 text-center">
+                      {platformScore ? (
+                        <div className="flex flex-col items-center gap-1">
+                          {/* Score Badge */}
+                          <span className={`inline-flex items-center justify-center min-w-[48px] px-3 py-1 rounded-md font-semibold text-sm ${getScoreColor(platformScore.score)}`}>
+                            {platformScore.score}
+                          </span>
+                          
+                          {/* Knowledge Level */}
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getKnowledgeLevelColor(platformScore.knowledge_level)}`}>
+                            {platformScore.knowledge_level}
+                          </span>
+                          
+                          {/* Mention Count */}
+                          {platformScore.mention_count > 0 && (
+                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                              {platformScore.mention_count}x
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 dark:text-gray-600">-</span>
+                      )}
+                    </td>
+                  );
+                })}
+
+                {/* Overall Score */}
+                <td className="px-6 py-4 text-center">
+                  <span className={`inline-flex items-center justify-center min-w-[56px] px-4 py-2 rounded-lg font-bold text-base ${getScoreColor(business.overall_score)}`}>
+                    {business.overall_score}
+                  </span>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
 
-      {/* Legend */}
+      {/* Footer Legend */}
       <div className="bg-gray-50 dark:bg-gray-900/50 px-6 py-4 border-t border-gray-200 dark:border-gray-700">
-        <div className="flex items-center justify-between text-xs">
+        <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
           <div className="flex items-center gap-4">
-            <span className="text-gray-600 dark:text-gray-400 font-medium">Score Legend:</span>
+            <span className="font-medium">Knowledge Levels:</span>
             <div className="flex items-center gap-2">
-              <span className="inline-block w-3 h-3 rounded bg-green-500"></span>
-              <span className="text-gray-600 dark:text-gray-400">80-100 (High)</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="inline-block w-3 h-3 rounded bg-blue-500"></span>
-              <span className="text-gray-600 dark:text-gray-400">60-79 (Medium)</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="inline-block w-3 h-3 rounded bg-yellow-500"></span>
-              <span className="text-gray-600 dark:text-gray-400">40-59 (Low)</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="inline-block w-3 h-3 rounded bg-orange-500"></span>
-              <span className="text-gray-600 dark:text-gray-400">1-39 (Very Low)</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="inline-block w-3 h-3 rounded bg-gray-300"></span>
-              <span className="text-gray-600 dark:text-gray-400">0 (Not Found)</span>
+              <span className="inline-flex items-center px-2 py-1 rounded bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200">
+                High
+              </span>
+              <span className="inline-flex items-center px-2 py-1 rounded bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200">
+                Medium
+              </span>
+              <span className="inline-flex items-center px-2 py-1 rounded bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-200">
+                Low
+              </span>
+              <span className="inline-flex items-center px-2 py-1 rounded bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                None
+              </span>
             </div>
           </div>
           <div className="text-gray-500 dark:text-gray-400">
-            Based on real AI platform queries
+            Higher scores indicate better AI platform visibility
           </div>
         </div>
       </div>

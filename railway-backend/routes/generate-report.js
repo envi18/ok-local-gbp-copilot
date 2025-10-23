@@ -1,7 +1,6 @@
 // railway-backend/routes/generate-report.js
-// PHASE B: Integrated Real AI Platform Queries
-// Complete report generation with actual AI visibility scores
-// FIXED: startTime scope and buildKnowledgeComparison parameters
+// PHASE B: Integrated Real AI Platform Queries + Competitor Scraping
+// FIXED V3: Adds competitor website scraping and deep competitive analysis
 
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
@@ -132,10 +131,9 @@ router.post('/', async (req, res) => {
 
 /**
  * Background report generation process
- * FIXED: Added startTime at beginning of function
  */
 async function processReportGeneration(reportId, websiteUrl, userInputs) {
-  const startTime = Date.now(); // FIXED: Define startTime here
+  const startTime = Date.now();
   let totalCost = 0;
   let queryCount = 0;
 
@@ -183,7 +181,52 @@ async function processReportGeneration(reportId, websiteUrl, userInputs) {
     console.log(`   Found ${competitors.length} competitors`);
 
     // =================================================================
-    // PHASE 4: Query AI Platforms for Main Business (NEW!)
+    // PHASE 3.5: Scrape Competitor Websites (NEW!)
+    // =================================================================
+    console.log('\n🌐 PHASE 3.5: Scraping competitor websites...');
+    
+    for (let i = 0; i < competitors.length; i++) {
+      const competitor = competitors[i];
+      
+      try {
+        console.log(`   → Scraping: ${competitor.name}`);
+        
+        // Scrape competitor website
+        const competitorContent = await extractWebsiteContent(competitor.website);
+        totalCost += 0.02; // ScrapingBee cost per site
+        queryCount += 1;
+        
+        // Analyze competitor content with AI
+        const competitorAnalysis = await analyzeBusinessWithAI(
+          competitorContent,
+          competitor.name,
+          businessAnalysis.business_type,
+          finalLocation
+        );
+        totalCost += 0.03; // OpenAI cost
+        queryCount += 1;
+        
+        // Add analysis to competitor object
+        competitor.content = competitorContent;
+        competitor.analysis = competitorAnalysis;
+        competitor.features = analyzeWebsiteFeatures(competitorContent);
+        
+        console.log(`   ✅ Analyzed: ${competitor.name}`);
+        console.log(`      Services: ${competitorAnalysis.primary_services?.length || 0}`);
+        console.log(`      Content depth: ${competitorContent.text?.length || 0} chars`);
+        
+        // Rate limit between scrapes
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+      } catch (error) {
+        console.error(`   ❌ Failed to scrape ${competitor.name}:`, error.message);
+        // Continue with other competitors
+        competitor.scrape_failed = true;
+      }
+    }
+
+    // =================================================================
+    // PHASE 4: Query AI Platforms for Main Business
     // =================================================================
     console.log('\n🤖 PHASE 4: Querying AI platforms for main business...');
     const mainBusinessAIResults = await queryAllPlatforms({
@@ -199,7 +242,7 @@ async function processReportGeneration(reportId, websiteUrl, userInputs) {
     console.log(`   Overall visibility: ${mainBusinessAIResults.overall_visibility_score}/100`);
 
     // =================================================================
-    // PHASE 5: Query AI Platforms for Competitors (NEW!)
+    // PHASE 5: Query AI Platforms for Competitors
     // =================================================================
     console.log('\n🤖 PHASE 5: Querying AI platforms for competitors...');
     const competitorAIResults = [];
@@ -226,8 +269,7 @@ async function processReportGeneration(reportId, websiteUrl, userInputs) {
     }
 
     // =================================================================
-    // PHASE 6: Build AI Knowledge Comparison Table (NEW!)
-    // FIXED: Proper parameter structure
+    // PHASE 6: Build AI Knowledge Comparison Table
     // =================================================================
     console.log('\n📊 PHASE 6: Building AI knowledge comparison...');
     
@@ -248,13 +290,12 @@ async function processReportGeneration(reportId, websiteUrl, userInputs) {
 
     // =================================================================
     // PHASE 7: Generate Competitive Analysis
-    // FIXED: Correct parameter order
     // =================================================================
     console.log('\n📈 PHASE 7: Generating competitive analysis...');
     const competitiveAnalysis = await generateCompetitiveAnalysis(
-      businessAnalysis,    // First param: business analysis
-      competitors,         // Second param: competitors array
-      mainBusinessContent  // Third param: website content
+      businessAnalysis,
+      competitors,
+      mainBusinessContent
     );
     totalCost += 0.15; // OpenAI cost
     queryCount += 1;
@@ -267,14 +308,14 @@ async function processReportGeneration(reportId, websiteUrl, userInputs) {
     // =================================================================
     console.log('\n💾 PHASE 8: Saving complete report...');
 
-    // Calculate processing duration (startTime now defined at function start)
+    // Calculate processing duration
     const processingDuration = Date.now() - startTime;
 
     // Format platform scores as ARRAY with REAL data
     const platformScoresArray = mainBusinessAIResults.platform_scores.map(ps => ({
       platform: ps.platform,
       score: ps.score,
-      status: ps.status, // 'success' or 'error'
+      status: ps.status,
       mentioned: ps.mentioned,
       mention_count: ps.mention_count,
       knowledge_level: ps.knowledge_level,
@@ -300,7 +341,7 @@ async function processReportGeneration(reportId, websiteUrl, userInputs) {
       ai_visibility: {
         overall_score: mainBusinessAIResults.overall_visibility_score,
         platform_breakdown: mainBusinessAIResults.platform_scores,
-        visibility_trend: 'baseline' // First report
+        visibility_trend: 'baseline'
       }
     };
 
@@ -321,12 +362,15 @@ async function processReportGeneration(reportId, websiteUrl, userInputs) {
       competitive_differentiation: competitiveAnalysis.competitive_differentiation || ''
     };
 
-    // Format competitor analysis with AI scores
+    // Format competitor analysis with AI scores AND content insights
     const formattedCompetitorAnalysis = {
       competitors: competitors.map((comp, idx) => ({
         name: comp.name,
         website: comp.website,
-        strengths: comp.strengths || [],
+        strengths: comp.analysis?.unique_value_proposition ? [comp.analysis.unique_value_proposition] : [],
+        features: comp.features || {},
+        services: comp.analysis?.primary_services || [],
+        content_depth: comp.content?.text?.length || 0,
         ai_visibility: competitorAIResults[idx] || null
       })),
       total_competitors: competitors.length,
@@ -359,14 +403,14 @@ async function processReportGeneration(reportId, websiteUrl, userInputs) {
         // Report data
         report_data: reportData,
         content_gap_analysis: formattedContentGapAnalysis,
-        ai_platform_scores: platformScoresArray, // ARRAY with real scores
+        ai_platform_scores: platformScoresArray,
         recommendations: recommendations,
         
         // Competitor info
         competitor_websites: competitors.map(c => c.website),
         competitor_analysis: formattedCompetitorAnalysis,
         
-        // AI Knowledge Comparison (NEW!)
+        // AI Knowledge Comparison
         ai_knowledge_comparison: aiKnowledgeComparison,
         
         // Scores
@@ -390,6 +434,7 @@ async function processReportGeneration(reportId, websiteUrl, userInputs) {
     console.log(`   Total cost: $${totalCost.toFixed(2)}`);
     console.log(`   AI Queries: ${queryCount}`);
     console.log(`   Platforms with visibility: ${mainBusinessAIResults.total_platforms_mentioned}/4`);
+    console.log(`   Competitors scraped: ${competitors.filter(c => !c.scrape_failed).length}/${competitors.length}`);
 
   } catch (error) {
     console.error('❌ Report generation failed:', error);
@@ -403,6 +448,28 @@ async function processReportGeneration(reportId, websiteUrl, userInputs) {
       })
       .eq('id', reportId);
   }
+}
+
+/**
+ * Analyze website features for comparison
+ */
+function analyzeWebsiteFeatures(content) {
+  const text = (content.text || '').toLowerCase();
+  const html = (content.html || '').toLowerCase();
+  
+  return {
+    hasFAQ: text.includes('faq') || text.includes('frequently asked'),
+    hasReviews: text.includes('review') || text.includes('testimonial'),
+    hasProcess: text.includes('how it works') || text.includes('our process'),
+    hasTestimonials: text.includes('testimonial') || text.includes('what our clients'),
+    hasBeforeAfter: text.includes('before and after') || text.includes('before & after'),
+    hasBlog: text.includes('blog') || text.includes('articles'),
+    hasContact: text.includes('contact us') || text.includes('get in touch'),
+    hasSchema: html.includes('schema.org') || html.includes('application/ld+json'),
+    serviceCount: (content.services || []).length,
+    contentDepth: text.length,
+    headingCount: (html.match(/<h[1-6]/g) || []).length
+  };
 }
 
 export { router as generateReportRoute };

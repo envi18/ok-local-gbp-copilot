@@ -1,12 +1,12 @@
 // railway-backend/services/competitorFinder.js
 // COMPLETE WORKING VERSION - Real competitor discovery using Google Custom Search API
-// Based on proven Netlify function logic
+// FIXED: Returns exactly 3 competitors (not 5)
 
 import axios from 'axios';
 
 /**
  * Find real competitors using AI-generated search terms and Google Custom Search
- * Returns 3-5 validated, relevant competitors
+ * Returns exactly 3 validated, relevant competitors
  * 
  * @param {Object} businessAnalysis - AI analysis from businessAnalyzer
  * @param {string} location - Geographic location (e.g., "San Diego, CA")
@@ -64,10 +64,10 @@ export async function findCompetitorsWithAI(businessAnalysis, location) {
     }
   }
 
-  // Convert Map to Array, sort by relevance, return top 5
+  // Convert Map to Array, sort by relevance, return top 3
   const competitorList = Array.from(competitors.values())
     .sort((a, b) => b.relevance_score - a.relevance_score)
-    .slice(0, 5);
+    .slice(0, 3); // FIXED: Changed from 5 to 3
 
   console.log(`✅ Found ${competitorList.length} valid competitors`);
   competitorList.forEach((comp, idx) => {
