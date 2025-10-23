@@ -397,4 +397,4 @@ async function processReportGeneration(reportId, websiteUrl, userInputs) {
   }
 }
 
-export default router;
+export { router as generateReportRoute };
