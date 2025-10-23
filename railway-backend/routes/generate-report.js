@@ -241,12 +241,10 @@ async function processReportGeneration(reportId, websiteUrl, userInputs) {
     // PHASE 7: Generate Competitive Analysis
     // =================================================================
     console.log('\n📈 PHASE 7: Generating competitive analysis...');
-    const competitiveAnalysis = await generateCompetitiveAnalysis(
-      mainBusinessContent,
-      competitors,
+ const competitiveAnalysis = await generateCompetitiveAnalysis(
       businessAnalysis,
-      mainBusinessAIResults,
-      competitorAIResults
+      competitors,
+      mainBusinessContent
     );
     totalCost += 0.15; // OpenAI cost
     queryCount += 1;
