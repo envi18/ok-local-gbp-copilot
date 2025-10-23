@@ -1,6 +1,7 @@
 // railway-backend/routes/generate-report.js
 // PHASE B: Integrated Real AI Platform Queries
 // Complete report generation with actual AI visibility scores
+// FIXED: startTime scope and buildKnowledgeComparison parameters
 
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
@@ -20,7 +21,6 @@ const supabase = createClient(
 );
 
 router.post('/', async (req, res) => {
-  const startTime = Date.now();
   console.log('\n🚀 Starting AI-powered report generation (Phase B)...');
   
   try {
@@ -132,8 +132,10 @@ router.post('/', async (req, res) => {
 
 /**
  * Background report generation process
+ * FIXED: Added startTime at beginning of function
  */
 async function processReportGeneration(reportId, websiteUrl, userInputs) {
+  const startTime = Date.now(); // FIXED: Define startTime here
   let totalCost = 0;
   let queryCount = 0;
 
@@ -225,26 +227,34 @@ async function processReportGeneration(reportId, websiteUrl, userInputs) {
 
     // =================================================================
     // PHASE 6: Build AI Knowledge Comparison Table (NEW!)
+    // FIXED: Proper parameter structure
     // =================================================================
     console.log('\n📊 PHASE 6: Building AI knowledge comparison...');
+    
+    // Build enriched competitor results with proper structure
+    const enrichedCompetitorResults = competitors.map((comp, idx) => ({
+      name: comp.name,
+      aiResults: competitorAIResults[idx]
+    }));
+
+    // Build comparison with correct parameters
     const aiKnowledgeComparison = buildKnowledgeComparison(
-      mainBusinessAIResults,
-      competitorAIResults,
       {
-        name: businessAnalysis.business_name,
-        website: websiteUrl
+        ...mainBusinessAIResults,
+        name: businessAnalysis.business_name
       },
-      competitors
+      enrichedCompetitorResults
     );
 
     // =================================================================
     // PHASE 7: Generate Competitive Analysis
+    // FIXED: Correct parameter order
     // =================================================================
     console.log('\n📈 PHASE 7: Generating competitive analysis...');
- const competitiveAnalysis = await generateCompetitiveAnalysis(
-      businessAnalysis,
-      competitors,
-      mainBusinessContent
+    const competitiveAnalysis = await generateCompetitiveAnalysis(
+      businessAnalysis,    // First param: business analysis
+      competitors,         // Second param: competitors array
+      mainBusinessContent  // Third param: website content
     );
     totalCost += 0.15; // OpenAI cost
     queryCount += 1;
@@ -257,7 +267,7 @@ async function processReportGeneration(reportId, websiteUrl, userInputs) {
     // =================================================================
     console.log('\n💾 PHASE 8: Saving complete report...');
 
-    // Calculate processing duration
+    // Calculate processing duration (startTime now defined at function start)
     const processingDuration = Date.now() - startTime;
 
     // Format platform scores as ARRAY with REAL data
