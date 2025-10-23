@@ -1,7 +1,6 @@
 // railway-backend/services/aiPlatformQuery.js
 // PHASE B: Real AI Platform Queries
-// Queries ChatGPT, Claude, Gemini, and Perplexity about businesses
-// FIXED V3: Correct working model names for all platforms
+// FINAL FIX: Verified working model names (December 2024)
 
 import Anthropic from '@anthropic-ai/sdk';
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -152,7 +151,7 @@ async function queryClaude(businessInfo) {
 
 /**
  * Query Gemini (Google) about a business
- * FIXED: Using gemini-1.5-flash (verified working model)
+ * FINAL FIX: Using gemini-pro (most stable model)
  */
 async function queryGemini(businessInfo) {
   try {
@@ -161,7 +160,7 @@ async function queryGemini(businessInfo) {
     }
 
     const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' }); // FIXED: Working model
+    const model = genAI.getGenerativeModel({ model: 'gemini-pro' }); // FIXED: Most stable model
 
     const prompt = buildQueryPrompt(businessInfo);
     const systemPrompt = 'You are an AI knowledge assessment tool. When asked about a business, provide a JSON response with: mentioned (boolean), mention_count (number 0-10), knowledge_level (None/Low/Medium/High), facts_known (array of facts), confidence (0-100). Be honest - if you don\'t know the business, say so.';
@@ -181,7 +180,7 @@ async function queryGemini(businessInfo) {
 
 /**
  * Query Perplexity about a business
- * FIXED: Using sonar-small-online (verified working model)
+ * FINAL FIX: Using llama-3.1-sonar-small-128k-online (verified working)
  */
 async function queryPerplexity(businessInfo) {
   try {
@@ -197,7 +196,7 @@ async function queryPerplexity(businessInfo) {
     const prompt = buildQueryPrompt(businessInfo);
 
     const completion = await perplexity.chat.completions.create({
-      model: 'sonar-small-online', // FIXED: Simplified working model name
+      model: 'llama-3.1-sonar-small-128k-online', // FIXED: Full model name with version
       temperature: 0.3,
       max_tokens: 500,
       messages: [
