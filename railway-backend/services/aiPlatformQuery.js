@@ -1,6 +1,7 @@
 // railway-backend/services/aiPlatformQuery.js
 // PHASE B: Real AI Platform Queries
 // Queries ChatGPT, Claude, Gemini, and Perplexity about businesses
+// FIXED: Updated model names to current versions
 
 import Anthropic from '@anthropic-ai/sdk';
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -112,6 +113,7 @@ async function queryChatGPT(businessInfo) {
 
 /**
  * Query Claude (Anthropic) about a business
+ * FIXED: Updated to claude-sonnet-4-5-20250929
  */
 async function queryClaude(businessInfo) {
   try {
@@ -126,7 +128,7 @@ async function queryClaude(businessInfo) {
     const prompt = buildQueryPrompt(businessInfo);
 
     const message = await anthropic.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
+      model: 'claude-sonnet-4-5-20250929', // FIXED: Updated model name
       max_tokens: 500,
       temperature: 0.3,
       messages: [
@@ -151,6 +153,7 @@ async function queryClaude(businessInfo) {
 
 /**
  * Query Gemini (Google) about a business
+ * FIXED: Updated to gemini-2.0-flash-exp
  */
 async function queryGemini(businessInfo) {
   try {
@@ -159,7 +162,7 @@ async function queryGemini(businessInfo) {
     }
 
     const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' }); // FIXED: Updated model name
 
     const prompt = buildQueryPrompt(businessInfo);
     const systemPrompt = 'You are an AI knowledge assessment tool. When asked about a business, provide a JSON response with: mentioned (boolean), mention_count (number 0-10), knowledge_level (None/Low/Medium/High), facts_known (array of facts), confidence (0-100). Be honest - if you don\'t know the business, say so.';
@@ -179,6 +182,7 @@ async function queryGemini(businessInfo) {
 
 /**
  * Query Perplexity about a business
+ * FIXED: Updated to llama-3.1-sonar-large-128k-online
  */
 async function queryPerplexity(businessInfo) {
   try {
@@ -195,7 +199,7 @@ async function queryPerplexity(businessInfo) {
     const prompt = buildQueryPrompt(businessInfo);
 
     const completion = await perplexity.chat.completions.create({
-      model: 'llama-3.1-sonar-small-128k-online',
+      model: 'llama-3.1-sonar-large-128k-online', // FIXED: Changed from small to large
       temperature: 0.3,
       max_tokens: 500,
       messages: [
@@ -226,124 +230,143 @@ async function queryPerplexity(businessInfo) {
  * Build query prompt for AI platforms
  */
 function buildQueryPrompt(businessInfo) {
-  return `What do you know about "${businessInfo.name}"${businessInfo.location ? ` in ${businessInfo.location}` : ''}?
+  // FIXED: Handle location object properly
+  const locationStr = typeof businessInfo.location === 'object' 
+    ? `${businessInfo.location.city}, ${businessInfo.location.state}`
+    : businessInfo.location;
+
+  return `What do you know about "${businessInfo.name}"${locationStr ? ` in ${locationStr}` : ''}?
 
 Business Details:
 - Name: ${businessInfo.name}
 - Type: ${businessInfo.type || 'Unknown'}
-- Location: ${businessInfo.location || 'Unknown'}
+- Location: ${locationStr || 'Unknown'}
 ${businessInfo.website ? `- Website: ${businessInfo.website}` : ''}
 
-Please assess your knowledge of this business and respond with JSON containing:
-1. mentioned: true if you have any information about this specific business
-2. mention_count: how many distinct facts/mentions you have (0-10)
-3. knowledge_level: your knowledge level (None/Low/Medium/High)
-4. facts_known: array of specific facts you know about this business
-5. confidence: your confidence in this assessment (0-100)
+Please assess your knowledge about this business and provide details about:
+1. Whether you have heard of or know about this business
+2. How many times it might appear in your training data (estimate 0-10)
+3. Your overall knowledge level: None, Low, Medium, or High
+4. Specific facts you know about them
+5. Your confidence level (0-100%)
 
-If you don't know this specific business, be honest and return mentioned: false.`;
+Respond ONLY with a JSON object in this exact format:
+{
+  "mentioned": true/false,
+  "mention_count": 0-10,
+  "knowledge_level": "None"/"Low"/"Medium"/"High",
+  "facts_known": ["fact 1", "fact 2", ...],
+  "confidence": 0-100
+}`;
 }
 
 /**
- * Parse AI response and calculate visibility score
+ * Parse AI response into standardized format
  */
 function parseAIResponse(response, platform) {
   try {
-    // Try to extract JSON from response
-    let jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      // Try to find JSON in code blocks
-      jsonMatch = response.match(/```json\s*([\s\S]*?)\s*```/);
-      if (jsonMatch) {
-        jsonMatch = [jsonMatch[1]];
+    // Extract JSON from response (handle markdown code blocks)
+    let jsonStr = response;
+    
+    // Remove markdown code blocks if present
+    if (response.includes('```')) {
+      const match = response.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (match) {
+        jsonStr = match[1].trim();
       }
     }
-
-    let data;
-    if (jsonMatch) {
-      data = JSON.parse(jsonMatch[0]);
-    } else {
-      // Fallback: try parsing entire response
-      data = JSON.parse(response);
-    }
-
+    
+    const parsed = JSON.parse(jsonStr);
+    
     // Calculate score based on knowledge level and confidence
     let baseScore = 0;
-    switch (data.knowledge_level?.toLowerCase()) {
-      case 'high': baseScore = 80; break;
-      case 'medium': baseScore = 60; break;
-      case 'low': baseScore = 30; break;
-      case 'none': baseScore = 0; break;
+    switch (parsed.knowledge_level) {
+      case 'High': baseScore = 85; break;
+      case 'Medium': baseScore = 65; break;
+      case 'Low': baseScore = 35; break;
+      case 'None': baseScore = 0; break;
       default: baseScore = 0;
     }
-
-    // Adjust score based on mention count
-    const mentionBonus = Math.min(data.mention_count * 2, 20);
-    const finalScore = Math.min(baseScore + mentionBonus, 100);
-
-    return {
-      mentioned: data.mentioned || false,
-      mention_count: data.mention_count || 0,
-      knowledge_level: data.knowledge_level || 'None',
-      facts_known: data.facts_known || [],
-      confidence: data.confidence || 0,
-      score: finalScore,
-      details: `${data.knowledge_level} knowledge with ${data.mention_count} facts known`
-    };
-
-  } catch (error) {
-    console.error(`   ⚠️ Failed to parse ${platform} response:`, error.message);
     
-    // Fallback: analyze response text for mentions
-    const lowerResponse = response.toLowerCase();
-    const mentioned = !lowerResponse.includes("don't know") && 
-                     !lowerResponse.includes("no information") &&
-                     !lowerResponse.includes("not familiar");
-
+    // Adjust score based on mention count and confidence
+    const mentionBonus = Math.min(parsed.mention_count * 2, 15);
+    const confidenceAdjustment = (parsed.confidence - 50) / 10;
+    
+    const finalScore = Math.max(0, Math.min(100, 
+      Math.round(baseScore + mentionBonus + confidenceAdjustment)
+    ));
+    
+    return {
+      mentioned: parsed.mentioned || false,
+      mention_count: parsed.mention_count || 0,
+      knowledge_level: parsed.knowledge_level || 'None',
+      facts_known: parsed.facts_known || [],
+      confidence: parsed.confidence || 0,
+      score: finalScore,
+      details: `Score based on ${parsed.knowledge_level} knowledge level with ${parsed.confidence}% confidence`
+    };
+    
+  } catch (error) {
+    console.error(`   ⚠️  Failed to parse ${platform} response:`, error.message);
+    
+    // Fallback: Try to extract basic info from text
+    const mentioned = response.toLowerCase().includes('yes') || 
+                     response.toLowerCase().includes('know about') ||
+                     response.toLowerCase().includes('familiar with');
+    
     return {
       mentioned: mentioned,
       mention_count: mentioned ? 1 : 0,
       knowledge_level: mentioned ? 'Low' : 'None',
       facts_known: [],
       confidence: 30,
-      score: mentioned ? 30 : 0,
-      details: mentioned ? 'Some information found' : 'No information found'
+      score: mentioned ? 25 : 0,
+      details: 'Parsed from text response (JSON parsing failed)'
     };
   }
 }
 
 /**
- * Build AI Knowledge Scores comparison table
+ * Build AI knowledge comparison table
+ * Shows how your business and competitors perform across all platforms
  */
-export function buildKnowledgeComparison(mainBusinessResults, competitorResults, mainBusinessInfo, competitors) {
+export function buildKnowledgeComparison(mainBusinessResults, competitorResults) {
   const comparison = {
-    main_business: {
-      name: mainBusinessInfo.name,
-      domain: mainBusinessInfo.website ? new URL(mainBusinessInfo.website).hostname : 'N/A',
-      scores: {}
-    },
-    competitors: []
+    businesses: [],
+    platforms: ['chatgpt', 'claude', 'gemini', 'perplexity']
   };
-
-  // Add main business scores
-  mainBusinessResults.platform_scores.forEach(ps => {
-    comparison.main_business.scores[ps.platform] = ps.score;
+  
+  // Add main business
+  comparison.businesses.push({
+    name: mainBusinessResults.name || 'Your Business',
+    is_target: true,
+    platform_scores: mainBusinessResults.platform_scores.map(p => ({
+      platform: p.platform,
+      score: p.score,
+      knowledge_level: p.knowledge_level,
+      mention_count: p.mention_count
+    })),
+    overall_score: mainBusinessResults.overall_visibility_score,
+    total_mentions: mainBusinessResults.total_platforms_mentioned
   });
-
-  // Add competitor scores
-  competitorResults.forEach((result, idx) => {
-    const competitor = {
-      name: competitors[idx]?.name || `Competitor ${idx + 1}`,
-      domain: competitors[idx]?.website ? new URL(competitors[idx].website).hostname : 'N/A',
-      scores: {}
-    };
-
-    result.platform_scores.forEach(ps => {
-      competitor.scores[ps.platform] = ps.score;
-    });
-
-    comparison.competitors.push(competitor);
+  
+  // Add competitors
+  competitorResults.forEach(competitor => {
+    if (competitor.aiResults) {
+      comparison.businesses.push({
+        name: competitor.name,
+        is_target: false,
+        platform_scores: competitor.aiResults.platform_scores.map(p => ({
+          platform: p.platform,
+          score: p.score,
+          knowledge_level: p.knowledge_level,
+          mention_count: p.mention_count
+        })),
+        overall_score: competitor.aiResults.overall_visibility_score,
+        total_mentions: competitor.aiResults.total_platforms_mentioned
+      });
+    }
   });
-
+  
   return comparison;
 }
