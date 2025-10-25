@@ -1,50 +1,120 @@
 // railway-backend/services/aiPlatformQuery.js
-// PHASE B: Real AI Platform Queries
-// FINAL FIX: Verified working model names (December 2024)
+// ULTIMATE VERSION: Query ALL available models, pick best results
+// Maximum quality - queries 15+ models per business for optimal accuracy
 
 import Anthropic from '@anthropic-ai/sdk';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import OpenAI from 'openai';
 
 /**
- * Query all AI platforms about a business
- * Returns real visibility scores and mention counts
+ * ALL AVAILABLE MODELS PER PLATFORM
+ */
+const MODEL_CONFIG = {
+  chatgpt: [
+    'gpt-4o',                    // Latest GPT-4 Omni
+    'gpt-4-turbo',               // GPT-4 Turbo
+    'gpt-4o-mini',               // Smaller GPT-4 Omni
+    'gpt-4',                     // Standard GPT-4
+    'gpt-3.5-turbo'              // Faster, cheaper option
+  ],
+  claude: [
+    'claude-3-5-sonnet-20241022', // Latest Claude 3.5 Sonnet
+    'claude-3-opus-20240229',     // Most capable Claude 3
+    'claude-3-sonnet-20240229'    // Balanced Claude 3
+  ],
+  gemini: [
+    'gemini-2.0-flash-exp',       // Newest Gemini 2.0
+    'gemini-1.5-pro-latest',      // Latest stable Pro
+    'gemini-1.5-flash-latest',    // Latest stable Flash
+    'gemini-1.5-pro',             // Stable Pro
+    'gemini-1.5-flash'            // Fast Flash
+  ],
+  perplexity: [
+    'sonar-reasoning',            // Best reasoning (most accurate)
+    'sonar-pro',                  // Professional tier
+    'sonar'                       // Standard tier
+  ]
+};
+
+/**
+ * Query ALL AI platforms with ALL available models
+ * Returns best results from each platform
  */
 export async function queryAllPlatforms(businessInfo) {
-  console.log(`\n🤖 Querying AI platforms for: ${businessInfo.name}`);
+  console.log(`\n🤖 ULTIMATE Multi-Model Analysis for: ${businessInfo.name}`);
+  console.log(`   Testing ${getTotalModelCount()} AI models across 4 platforms...\n`);
   
-  const results = await Promise.allSettled([
-    queryChatGPT(businessInfo),
-    queryClaude(businessInfo),
-    queryGemini(businessInfo),
-    queryPerplexity(businessInfo)
-  ]);
+  const startTime = Date.now();
+  
+  // Query ALL models in parallel for maximum speed
+  const allQueries = [
+    ...queryPlatformMultiModel('chatgpt', businessInfo),
+    ...queryPlatformMultiModel('claude', businessInfo),
+    ...queryPlatformMultiModel('gemini', businessInfo),
+    ...queryPlatformMultiModel('perplexity', businessInfo)
+  ];
 
-  // Process results
+  console.log(`   Executing ${allQueries.length} parallel queries...`);
+  const results = await Promise.allSettled(allQueries);
+
+  // Group results by platform
+  const groupedResults = {
+    chatgpt: [],
+    claude: [],
+    gemini: [],
+    perplexity: []
+  };
+
+  results.forEach((result) => {
+    if (result.status === 'fulfilled' && result.value) {
+      const platform = result.value.platform;
+      if (groupedResults[platform]) {
+        groupedResults[platform].push(result.value);
+      }
+    }
+  });
+
+  // Pick best result from each platform
+  console.log(`\n📊 Analyzing results and selecting best from each platform:\n`);
+  
   const platformScores = [];
   let totalMentions = 0;
-  
-  results.forEach((result, idx) => {
-    const platforms = ['chatgpt', 'claude', 'gemini', 'perplexity'];
-    const platform = platforms[idx];
+  let totalModelsQueried = 0;
+  let successfulQueries = 0;
+
+  for (const [platform, platformResults] of Object.entries(groupedResults)) {
+    const validResults = platformResults.filter(r => r && r.score !== undefined);
+    totalModelsQueried += MODEL_CONFIG[platform].length;
+    successfulQueries += validResults.length;
     
-    if (result.status === 'fulfilled' && result.value) {
+    const bestResult = pickBestResult(validResults, platform);
+    
+    if (bestResult) {
       platformScores.push({
         platform: platform,
-        score: result.value.score,
-        mentioned: result.value.mentioned,
-        mention_count: result.value.mention_count,
-        knowledge_level: result.value.knowledge_level,
-        facts_known: result.value.facts_known,
+        score: bestResult.score,
+        mentioned: bestResult.mentioned,
+        mention_count: bestResult.mention_count,
+        knowledge_level: bestResult.knowledge_level,
+        facts_known: bestResult.facts_known,
         status: 'success',
-        details: result.value.details
+        details: `${bestResult.details} (Best of ${validResults.length}/${MODEL_CONFIG[platform].length} models)`,
+        model_used: bestResult.model,
+        models_tested: MODEL_CONFIG[platform].length,
+        successful_queries: validResults.length
       });
       
-      if (result.value.mentioned) {
+      if (bestResult.mentioned) {
         totalMentions++;
       }
+      
+      console.log(`   ✓ ${platform.toUpperCase()}: ${bestResult.score}/100 (${bestResult.knowledge_level})`);
+      console.log(`      Best model: ${bestResult.model}`);
+      console.log(`      Success rate: ${validResults.length}/${MODEL_CONFIG[platform].length} models`);
+      if (bestResult.mentioned) {
+        console.log(`      🎯 Mentioned ${bestResult.mention_count}x in training data!`);
+      }
     } else {
-      // Failed query - use fallback
       platformScores.push({
         platform: platform,
         score: 0,
@@ -53,24 +123,97 @@ export async function queryAllPlatforms(businessInfo) {
         knowledge_level: 'None',
         facts_known: [],
         status: 'error',
-        details: 'Query failed'
+        details: `All ${MODEL_CONFIG[platform].length} models failed`,
+        models_tested: MODEL_CONFIG[platform].length,
+        successful_queries: 0
       });
+      
+      console.log(`   ✗ ${platform.toUpperCase()}: All models failed`);
     }
-  });
+  }
+
+  const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+  
+  console.log(`\n✅ Multi-model analysis complete:`);
+  console.log(`   Total models queried: ${totalModelsQueried}`);
+  console.log(`   Successful queries: ${successfulQueries}/${totalModelsQueried} (${Math.round(successfulQueries/totalModelsQueried*100)}%)`);
+  console.log(`   Platforms with visibility: ${totalMentions}/4`);
+  console.log(`   Processing time: ${duration}s`);
 
   return {
     platform_scores: platformScores,
     total_platforms_mentioned: totalMentions,
     overall_visibility_score: Math.round(
       platformScores.reduce((sum, p) => sum + p.score, 0) / platformScores.length
-    )
+    ),
+    total_models_queried: totalModelsQueried,
+    successful_queries: successfulQueries
   };
 }
 
 /**
- * Query ChatGPT (OpenAI) about a business
+ * Query all models for a specific platform
  */
-async function queryChatGPT(businessInfo) {
+function queryPlatformMultiModel(platform, businessInfo) {
+  const models = MODEL_CONFIG[platform];
+  
+  return models.map(model => {
+    switch(platform) {
+      case 'chatgpt':
+        return queryChatGPT(businessInfo, model);
+      case 'claude':
+        return queryClaude(businessInfo, model);
+      case 'gemini':
+        return queryGemini(businessInfo, model);
+      case 'perplexity':
+        return queryPerplexity(businessInfo, model);
+      default:
+        return Promise.resolve(null);
+    }
+  });
+}
+
+/**
+ * Pick the best result from multiple model queries
+ * Priority: 
+ * 1) Highest mention_count (real mentions are gold)
+ * 2) Highest confidence (reliability)
+ * 3) Most facts_known (detail)
+ * 4) Highest score (overall)
+ */
+function pickBestResult(results, platform) {
+  if (results.length === 0) return null;
+  
+  // Sort by quality metrics
+  const sorted = results.sort((a, b) => {
+    // PRIMARY: Most mentions (this is the most valuable signal)
+    if (a.mention_count !== b.mention_count) {
+      return b.mention_count - a.mention_count;
+    }
+    
+    // SECONDARY: Highest confidence
+    if (a.confidence !== b.confidence) {
+      return b.confidence - a.confidence;
+    }
+    
+    // TERTIARY: Most facts
+    const aFacts = a.facts_known?.length || 0;
+    const bFacts = b.facts_known?.length || 0;
+    if (aFacts !== bFacts) {
+      return bFacts - aFacts;
+    }
+    
+    // QUATERNARY: Highest score
+    return b.score - a.score;
+  });
+  
+  return sorted[0];
+}
+
+/**
+ * Query ChatGPT with specific model
+ */
+async function queryChatGPT(businessInfo, model) {
   try {
     if (!process.env.OPENAI_API_KEY) {
       throw new Error('OpenAI API key not configured');
@@ -83,7 +226,7 @@ async function queryChatGPT(businessInfo) {
     const prompt = buildQueryPrompt(businessInfo);
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: model,
       temperature: 0.3,
       max_tokens: 500,
       messages: [
@@ -99,21 +242,24 @@ async function queryChatGPT(businessInfo) {
     });
 
     const response = completion.choices[0].message.content;
-    const parsed = parseAIResponse(response, 'chatgpt');
+    const parsed = parseAIResponse(response, model);
     
-    console.log(`   ✓ ChatGPT: ${parsed.knowledge_level} knowledge (${parsed.score}/100)`);
-    return parsed;
+    return {
+      ...parsed,
+      platform: 'chatgpt',
+      model: model
+    };
 
   } catch (error) {
-    console.error(`   ✗ ChatGPT query failed:`, error.message);
+    console.error(`   ✗ ChatGPT ${model}:`, error.message);
     return null;
   }
 }
 
 /**
- * Query Claude (Anthropic) about a business
+ * Query Claude with specific model
  */
-async function queryClaude(businessInfo) {
+async function queryClaude(businessInfo, model) {
   try {
     if (!process.env.ANTHROPIC_API_KEY) {
       throw new Error('Anthropic API key not configured');
@@ -126,7 +272,7 @@ async function queryClaude(businessInfo) {
     const prompt = buildQueryPrompt(businessInfo);
 
     const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5-20250929',
+      model: model,
       max_tokens: 500,
       temperature: 0.3,
       messages: [
@@ -138,49 +284,55 @@ async function queryClaude(businessInfo) {
     });
 
     const response = message.content[0].text;
-    const parsed = parseAIResponse(response, 'claude');
+    const parsed = parseAIResponse(response, model);
     
-    console.log(`   ✓ Claude: ${parsed.knowledge_level} knowledge (${parsed.score}/100)`);
-    return parsed;
+    return {
+      ...parsed,
+      platform: 'claude',
+      model: model
+    };
 
   } catch (error) {
-    console.error(`   ✗ Claude query failed:`, error.message);
+    console.error(`   ✗ Claude ${model}:`, error.message);
     return null;
   }
 }
 
 /**
- * Query Gemini (Google) about a business
- * FINAL FIX: Using gemini-pro (most stable model)
+ * Query Gemini with specific model
  */
-async function queryGemini(businessInfo) {
+async function queryGemini(businessInfo, model) {
   try {
     if (!process.env.GOOGLE_API_KEY) {
       throw new Error('Google API key not configured');
     }
 
     const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' }); // Try flash instead    const prompt = buildQueryPrompt(businessInfo);
+    const geminiModel = genAI.getGenerativeModel({ model: model });
+
+    const prompt = buildQueryPrompt(businessInfo);
     const systemPrompt = 'You are an AI knowledge assessment tool. When asked about a business, provide a JSON response with: mentioned (boolean), mention_count (number 0-10), knowledge_level (None/Low/Medium/High), facts_known (array of facts), confidence (0-100). Be honest - if you don\'t know the business, say so.';
 
-    const result = await model.generateContent(`${systemPrompt}\n\n${prompt}`);
+    const result = await geminiModel.generateContent(`${systemPrompt}\n\n${prompt}`);
     const response = result.response.text();
-    const parsed = parseAIResponse(response, 'gemini');
+    const parsed = parseAIResponse(response, model);
     
-    console.log(`   ✓ Gemini: ${parsed.knowledge_level} knowledge (${parsed.score}/100)`);
-    return parsed;
+    return {
+      ...parsed,
+      platform: 'gemini',
+      model: model
+    };
 
   } catch (error) {
-    console.error(`   ✗ Gemini query failed:`, error.message);
+    console.error(`   ✗ Gemini ${model}:`, error.message);
     return null;
   }
 }
 
 /**
- * Query Perplexity about a business
- * FINAL FIX: Using llama-3.1-sonar-small-128k-online (verified working)
+ * Query Perplexity with specific model
  */
-async function queryPerplexity(businessInfo) {
+async function queryPerplexity(businessInfo, model) {
   try {
     if (!process.env.PERPLEXITY_API_KEY) {
       throw new Error('Perplexity API key not configured');
@@ -194,7 +346,7 @@ async function queryPerplexity(businessInfo) {
     const prompt = buildQueryPrompt(businessInfo);
 
     const completion = await perplexity.chat.completions.create({
-model: 'sonar-pro', // FIXED: Simplified current model name
+      model: model,
       temperature: 0.3,
       max_tokens: 500,
       messages: [
@@ -210,13 +362,16 @@ model: 'sonar-pro', // FIXED: Simplified current model name
     });
 
     const response = completion.choices[0].message.content;
-    const parsed = parseAIResponse(response, 'perplexity');
+    const parsed = parseAIResponse(response, model);
     
-    console.log(`   ✓ Perplexity: ${parsed.knowledge_level} knowledge (${parsed.score}/100)`);
-    return parsed;
+    return {
+      ...parsed,
+      platform: 'perplexity',
+      model: model
+    };
 
   } catch (error) {
-    console.error(`   ✗ Perplexity query failed:`, error.message);
+    console.error(`   ✗ Perplexity ${model}:`, error.message);
     return null;
   }
 }
@@ -225,7 +380,6 @@ model: 'sonar-pro', // FIXED: Simplified current model name
  * Build query prompt for AI platforms
  */
 function buildQueryPrompt(businessInfo) {
-  // Handle location object properly
   const locationStr = typeof businessInfo.location === 'object' 
     ? `${businessInfo.location.city}, ${businessInfo.location.state}`
     : businessInfo.location;
@@ -258,9 +412,8 @@ Respond ONLY with a JSON object in this exact format:
 /**
  * Parse AI response into standardized format
  */
-function parseAIResponse(response, platform) {
+function parseAIResponse(response, model) {
   try {
-    // Extract JSON from response (handle markdown code blocks)
     let jsonStr = response;
     
     // Remove markdown code blocks if present
@@ -283,7 +436,6 @@ function parseAIResponse(response, platform) {
       default: baseScore = 0;
     }
     
-    // Adjust score based on mention count and confidence
     const mentionBonus = Math.min(parsed.mention_count * 2, 15);
     const confidenceAdjustment = (parsed.confidence - 50) / 10;
     
@@ -302,9 +454,8 @@ function parseAIResponse(response, platform) {
     };
     
   } catch (error) {
-    console.error(`   ⚠️  Failed to parse ${platform} response:`, error.message);
+    console.error(`   ⚠️  Failed to parse ${model}:`, error.message);
     
-    // Fallback: Try to extract basic info from text
     const mentioned = response.toLowerCase().includes('yes') || 
                      response.toLowerCase().includes('know about') ||
                      response.toLowerCase().includes('familiar with');
@@ -322,8 +473,14 @@ function parseAIResponse(response, platform) {
 }
 
 /**
+ * Get total number of models across all platforms
+ */
+function getTotalModelCount() {
+  return Object.values(MODEL_CONFIG).reduce((sum, models) => sum + models.length, 0);
+}
+
+/**
  * Build AI knowledge comparison table
- * Shows how your business and competitors perform across all platforms
  */
 export function buildKnowledgeComparison(mainBusinessResults, competitorResults) {
   const comparison = {
@@ -331,7 +488,6 @@ export function buildKnowledgeComparison(mainBusinessResults, competitorResults)
     platforms: ['chatgpt', 'claude', 'gemini', 'perplexity']
   };
   
-  // Add main business
   comparison.businesses.push({
     name: mainBusinessResults.name || 'Your Business',
     is_target: true,
@@ -345,7 +501,6 @@ export function buildKnowledgeComparison(mainBusinessResults, competitorResults)
     total_mentions: mainBusinessResults.total_platforms_mentioned
   });
   
-  // Add competitors
   competitorResults.forEach(competitor => {
     if (competitor.aiResults) {
       comparison.businesses.push({
