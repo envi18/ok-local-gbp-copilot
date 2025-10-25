@@ -160,8 +160,7 @@ async function queryGemini(businessInfo) {
     }
 
     const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-    const model = genAI.getGenerativeModel({ model: 'gemini-pro' }); // FIXED: Most stable model
-
+const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro-latest' }); // FIXED: Latest model
     const prompt = buildQueryPrompt(businessInfo);
     const systemPrompt = 'You are an AI knowledge assessment tool. When asked about a business, provide a JSON response with: mentioned (boolean), mention_count (number 0-10), knowledge_level (None/Low/Medium/High), facts_known (array of facts), confidence (0-100). Be honest - if you don\'t know the business, say so.';
 
@@ -196,7 +195,7 @@ async function queryPerplexity(businessInfo) {
     const prompt = buildQueryPrompt(businessInfo);
 
     const completion = await perplexity.chat.completions.create({
-      model: 'llama-3.1-sonar-small-128k-online', // FIXED: Full model name with version
+model: 'sonar-pro', // FIXED: Simplified current model name
       temperature: 0.3,
       max_tokens: 500,
       messages: [
