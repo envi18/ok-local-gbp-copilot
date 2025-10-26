@@ -96,60 +96,30 @@ export const AIReportHistory: React.FC = () => {
     }
   };
 
-  // PHASE 3 FIX #2: Export PDF - Generate PDF from report
+  // PHASE 3 FIX #2: Export PDF - Open share URL in new tab for printing
   const handleExportPDF = async (reportId: string) => {
     try {
-      showNotification('Preparing PDF export...', 'info');
+      // Find the report to get its share URL
+      const report = reports.find(r => r.id === reportId);
       
-      // Get the full report data
-      const { data: reportData, error } = await ExternalReportService.getReportById(reportId);
-      
-      if (error || !reportData) {
-        showNotification('Failed to load report data', 'error');
-        return;
-      }
-
-      // Use html2pdf for client-side PDF generation
-      // First, check if html2pdf is available
-      if (typeof window !== 'undefined' && (window as any).html2pdf) {
-        const html2pdf = (window as any).html2pdf;
+      if (report && report.share_url) {
+        // Open the share URL in a new window
+        const printWindow = window.open(report.share_url, '_blank');
         
-        // Open the share URL in a hidden iframe to get the rendered content
-        const iframe = document.createElement('iframe');
-        iframe.style.display = 'none';
-        iframe.src = reportData.share_url || `/share/${reportData.share_token}`;
-        document.body.appendChild(iframe);
-        
-        // Wait for iframe to load
-        iframe.onload = () => {
-          setTimeout(() => {
-            const content = iframe.contentDocument?.body;
-            if (content) {
-              const opt = {
-                margin: 0.5,
-                filename: `AI-Visibility-Report-${reportData.business_name || reportData.target_website}.pdf`,
-                image: { type: 'jpeg', quality: 0.98 },
-                html2canvas: { scale: 2, useCORS: true },
-                jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
-              };
-              
-              html2pdf().set(opt).from(content).save().then(() => {
-                showNotification('PDF exported successfully!', 'success');
-                document.body.removeChild(iframe);
-              });
-            } else {
-              showNotification('Failed to generate PDF', 'error');
-              document.body.removeChild(iframe);
-            }
-          }, 2000); // Wait 2 seconds for content to fully load
-        };
-      } else {
-        // Fallback: Open print dialog
-        const report = reports.find(r => r.id === reportId);
-        if (report && report.share_url) {
-          window.open(report.share_url + '?print=true', '_blank');
-          showNotification('Opening report for printing...', 'info');
+        if (printWindow) {
+          // Wait for the window to load, then trigger print dialog
+          printWindow.addEventListener('load', () => {
+            setTimeout(() => {
+              printWindow.print();
+            }, 500);
+          });
+          
+          showNotification('Opening report for PDF export...', 'info');
+        } else {
+          showNotification('Please allow popups to export PDF', 'error');
         }
+      } else {
+        showNotification('Report share link not available', 'error');
       }
     } catch (err) {
       console.error('PDF export error:', err);
@@ -398,4 +368,4 @@ export const AIReportHistory: React.FC = () => {
       )}
     </div>
   );
-};
+}
