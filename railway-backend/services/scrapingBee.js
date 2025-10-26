@@ -1,12 +1,39 @@
 // railway-backend/services/scrapingBee.js
-// ENHANCED: Website content extraction with footer business name detection
+// ENHANCED: Website content extraction with RETRY LOGIC and footer business name detection
 
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 
 /**
+ * Retry configuration
+ */
+const RETRY_CONFIG = {
+  maxRetries: 3,           // Try 3 times total
+  initialDelay: 2000,      // Start with 2 second delay
+  maxDelay: 10000,         // Max 10 second delay
+  timeoutMs: 60000,        // Increase timeout to 60 seconds
+  backoffMultiplier: 2     // Double delay each retry
+};
+
+/**
+ * Sleep helper for delays
+ */
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
+ * Calculate delay with exponential backoff
+ */
+function getRetryDelay(attemptNumber) {
+  const delay = Math.min(
+    RETRY_CONFIG.initialDelay * Math.pow(RETRY_CONFIG.backoffMultiplier, attemptNumber - 1),
+    RETRY_CONFIG.maxDelay
+  );
+  return delay;
+}
+
+/**
  * Extract comprehensive website content for AI analysis
- * NOW INCLUDES: Footer business name extraction for accurate competitor names
+ * WITH RETRY LOGIC: Automatically retries on timeout or network errors
  * 
  * @param {string} url - Website URL to scrape
  * @returns {Promise<Object>} Extracted website data
@@ -14,79 +41,157 @@ import * as cheerio from 'cheerio';
 export async function extractWebsiteContent(url) {
   console.log(`🔍 Extracting content from: ${url}`);
   
-  try {
-    // Call ScrapingBee API
-    const response = await axios.get('https://app.scrapingbee.com/api/v1/', {
-      params: {
-        api_key: process.env.SCRAPINGBEE_API_KEY,
+  let lastError;
+  
+  // Retry loop
+  for (let attempt = 1; attempt <= RETRY_CONFIG.maxRetries; attempt++) {
+    try {
+      if (attempt > 1) {
+        const delay = getRetryDelay(attempt);
+        console.log(`   ⏳ Retry attempt ${attempt}/${RETRY_CONFIG.maxRetries} after ${delay}ms delay...`);
+        await sleep(delay);
+      }
+      
+      // Call ScrapingBee API with increased timeout
+      const response = await axios.get('https://app.scrapingbee.com/api/v1/', {
+        params: {
+          api_key: process.env.SCRAPINGBEE_API_KEY,
+          url: url,
+          render_js: 'true',        // Enable JavaScript rendering
+          premium_proxy: 'false',   // Use standard proxy (cheaper)
+          country_code: 'us',
+          wait: 3000                // Wait 3s for JS to execute
+        },
+        timeout: RETRY_CONFIG.timeoutMs  // 60 second timeout
+      });
+
+      const html = response.data;
+      const $ = cheerio.load(html);
+
+      // Extract domain from URL
+      const urlObj = new URL(url);
+      const domain = urlObj.hostname.replace(/^www\./, '');
+
+      // Extract comprehensive data
+      const websiteData = {
         url: url,
-        render_js: 'true', // Enable JavaScript rendering
-        premium_proxy: 'false', // Use standard proxy (cheaper)
-        country_code: 'us'
-      },
-      timeout: 30000 // 30 second timeout
-    });
+        domain: domain,
+        html: html,
+        
+        // Basic metadata
+        title: extractTitle($),
+        meta_description: $('meta[name="description"]').attr('content') || '',
+        
+        // Schema.org structured data
+        schema_data: extractSchemaData($),
+        
+        // Open Graph data
+        og_data: extractOpenGraphData($),
+        
+        // Headings for content structure
+        headings: extractHeadings($),
+        
+        // Text content
+        text_content: extractTextContent($),
+        
+        // Contact information + FOOTER BUSINESS NAME
+        contact_info: extractContactInfo($, html),
+        
+        // Services/products mentioned
+        services: extractServices($, html),
+        
+        // About content
+        about_content: extractAboutContent($, html),
+        
+        // Links
+        internal_links: extractLinks($, domain, true),
+        external_links: extractLinks($, domain, false),
+        
+        // Images
+        images: extractImages($),
+        
+        extraction_timestamp: new Date().toISOString(),
+        extraction_attempts: attempt  // Track how many attempts it took
+      };
 
-    const html = response.data;
-    const $ = cheerio.load(html);
+      console.log(`✅ Content extracted successfully (attempt ${attempt}/${RETRY_CONFIG.maxRetries})`);
+      console.log(`   Title: ${websiteData.title}`);
+      console.log(`   Footer Business Name: ${websiteData.contact_info.business_name_from_footer?.from_copyright || 'Not found'}`);
+      console.log(`   Text length: ${websiteData.text_content.length} chars`);
+      console.log(`   Services found: ${websiteData.services.length}`);
+      
+      return websiteData;
 
-    // Extract domain from URL
-    const urlObj = new URL(url);
-    const domain = urlObj.hostname.replace(/^www\./, '');
-
-    // Extract comprehensive data
-    const websiteData = {
-      url: url,
-      domain: domain,
-      html: html,
+    } catch (error) {
+      lastError = error;
       
-      // Basic metadata
-      title: extractTitle($),
-      meta_description: $('meta[name="description"]').attr('content') || '',
+      // Determine if error is retryable
+      const isRetryable = isRetryableError(error);
+      const isLastAttempt = attempt === RETRY_CONFIG.maxRetries;
       
-      // Schema.org structured data
-      schema_data: extractSchemaData($),
-      
-      // Open Graph data
-      og_data: extractOpenGraphData($),
-      
-      // Headings for content structure
-      headings: extractHeadings($),
-      
-      // Text content
-      text_content: extractTextContent($),
-      
-      // Contact information + FOOTER BUSINESS NAME
-      contact_info: extractContactInfo($, html),
-      
-      // Services/products mentioned
-      services: extractServices($, html),
-      
-      // About content
-      about_content: extractAboutContent($, html),
-      
-      // Links
-      internal_links: extractLinks($, domain, true),
-      external_links: extractLinks($, domain, false),
-      
-      // Images
-      images: extractImages($),
-      
-      extraction_timestamp: new Date().toISOString()
-    };
-
-    console.log(`✅ Content extracted successfully`);
-    console.log(`   Title: ${websiteData.title}`);
-    console.log(`   Footer Business Name: ${websiteData.contact_info.business_name_from_footer?.from_copyright || 'Not found'}`);
-    console.log(`   Text length: ${websiteData.text_content.length} chars`);
-    console.log(`   Services found: ${websiteData.services.length}`);
-    
-    return websiteData;
-
-  } catch (error) {
-    console.error('❌ ScrapingBee extraction failed:', error.message);
-    throw new Error(`Failed to extract website content: ${error.message}`);
+      if (isRetryable && !isLastAttempt) {
+        console.log(`   ⚠️  Attempt ${attempt} failed: ${error.message}`);
+        console.log(`   🔄 Will retry... (${RETRY_CONFIG.maxRetries - attempt} attempts remaining)`);
+        continue; // Try again
+      } else {
+        // Either not retryable, or we're out of retries
+        if (!isRetryable) {
+          console.error(`   ❌ Non-retryable error: ${error.message}`);
+        } else {
+          console.error(`   ❌ All ${RETRY_CONFIG.maxRetries} attempts failed: ${error.message}`);
+        }
+        break; // Exit retry loop
+      }
+    }
   }
+  
+  // If we get here, all retries failed
+  throw new Error(`Failed to extract website content after ${RETRY_CONFIG.maxRetries} attempts: ${lastError.message}`);
+}
+
+/**
+ * Determine if an error is retryable
+ * Timeout, network errors, and 5xx errors are retryable
+ * 4xx errors (except 429 rate limit) are not retryable
+ */
+function isRetryableError(error) {
+  // Timeout errors - always retry
+  if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+    return true;
+  }
+  
+  // Network errors - always retry
+  if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT') {
+    return true;
+  }
+  
+  // HTTP errors
+  if (error.response) {
+    const status = error.response.status;
+    
+    // 5xx server errors - retry
+    if (status >= 500) {
+      return true;
+    }
+    
+    // 429 rate limit - retry
+    if (status === 429) {
+      return true;
+    }
+    
+    // 408 request timeout - retry
+    if (status === 408) {
+      return true;
+    }
+    
+    // 4xx client errors (except 429) - don't retry
+    if (status >= 400 && status < 500) {
+      return false;
+    }
+  }
+  
+  // Unknown errors - retry to be safe
+  return true;
 }
 
 /**
@@ -224,10 +329,6 @@ function extractBusinessNameFromFooter($) {
   };
   
   // Method 1: Look for copyright text (most reliable)
-  // Examples:
-  // "© 2024 Junk King San Diego"
-  // "Copyright © 2025 Junk and Trash Hauling San Diego. All rights reserved."
-  // "Copyright © 2024 The Wreckin Haul — Junk Removal"
   $('footer').find('*').each((i, elem) => {
     const text = $(elem).text().trim();
     
@@ -263,16 +364,14 @@ function extractBusinessNameFromFooter($) {
   // Method 2: Look for text immediately above address in footer
   if (!businessName.from_copyright) {
     $('footer').find('address').each((i, elem) => {
-      // Get previous sibling or parent text
       const prevText = $(elem).prev().text().trim();
       const parentText = $(elem).parent().contents().first().text().trim();
       
       const candidateName = prevText || parentText;
       
-      // If it's a reasonable business name length
       if (candidateName.length >= 5 && candidateName.length <= 80 && 
           !candidateName.includes('http') && !candidateName.includes('@') &&
-          !candidateName.match(/\d{3}[-.\s]?\d{3}[-.\s]?\d{4}/)) { // Not a phone number
+          !candidateName.match(/\d{3}[-.\s]?\d{3}[-.\s]?\d{4}/)) {
         
         businessName.from_address_block = candidateName;
         businessName.confidence = 'medium';
@@ -282,7 +381,7 @@ function extractBusinessNameFromFooter($) {
     });
   }
   
-  // Method 3: Look for strong/bold text in footer (often business name)
+  // Method 3: Look for strong/bold text in footer
   if (!businessName.from_copyright && !businessName.from_address_block) {
     const footerBoldSelectors = ['footer strong', 'footer b', 'footer .brand', 'footer .company-name', 'footer h3', 'footer h4'];
     
@@ -301,7 +400,7 @@ function extractBusinessNameFromFooter($) {
     }
   }
   
-  // If nothing found, try looking for schema.org name
+  // Method 4: Try schema.org name
   if (!businessName.from_copyright && !businessName.from_address_block && !businessName.from_footer_text) {
     $('script[type="application/ld+json"]').each((i, elem) => {
       try {
@@ -364,7 +463,7 @@ function extractServices($, html) {
     }
   });
   
-  return Array.from(services).slice(0, 20); // Limit to 20 services
+  return Array.from(services).slice(0, 20);
 }
 
 /**
@@ -388,7 +487,6 @@ function extractAboutContent($, html) {
     }
   }
   
-  // Fallback: look for "about" keyword in text
   if (!aboutText) {
     const aboutMatch = html.match(/about us[^<]*<\/h\d>(.*?)<(?:h\d|section|div class)/is);
     if (aboutMatch && aboutMatch[1]) {
@@ -396,7 +494,7 @@ function extractAboutContent($, html) {
     }
   }
   
-  return aboutText.substring(0, 1000); // Limit to 1000 chars
+  return aboutText.substring(0, 1000);
 }
 
 /**
@@ -410,7 +508,7 @@ function extractLinks($, domain, internal = true) {
     const text = $(elem).text().trim();
     
     if (!href || href.startsWith('#') || href.startsWith('javascript:')) {
-      return; // Skip
+      return;
     }
     
     const isInternal = href.startsWith('/') || href.includes(domain);
@@ -423,7 +521,7 @@ function extractLinks($, domain, internal = true) {
     }
   });
   
-  return links.slice(0, 50); // Limit to 50 links
+  return links.slice(0, 50);
 }
 
 /**
@@ -444,5 +542,5 @@ function extractImages($) {
     }
   });
   
-  return images.slice(0, 20); // Limit to 20 images
+  return images.slice(0, 20);
 }
