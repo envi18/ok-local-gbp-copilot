@@ -1,5 +1,6 @@
 // src/lib/externalReportService.ts
 // Service for managing external AI visibility reports
+// FIXED: Consistent field mapping for UI compatibility
 
 import type {
   ExternalReport,
@@ -11,6 +12,23 @@ import type {
 import { supabase } from './supabase';
 
 export class ExternalReportService {
+  /**
+   * Helper: Map database ExternalReport to UI-friendly format
+   * Adds computed fields for backwards compatibility
+   */
+  private static mapReportToUI(report: any): any {
+    if (!report) return null;
+
+    return {
+      ...report,
+      // Add UI-friendly aliases
+      generated_at: report.created_at,
+      generated_by: report.generated_by_name,
+      processing_time_ms: report.processing_duration_ms,
+      estimated_cost_usd: report.api_cost_usd,
+    };
+  }
+
   /**
    * Create a new external report (initial database record)
    * Returns immediately with report ID - actual generation happens async
@@ -79,7 +97,7 @@ export class ExternalReportService {
     try {
       let query = supabase
         .from('ai_visibility_external_reports')
-        .select('id, business_name, target_website, status, generated_by_name, created_at, share_url, report_data')
+        .select('id, business_name, target_website, status, generated_by_name, created_at, share_url, report_data, share_views')
         .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
@@ -113,7 +131,7 @@ export class ExternalReportService {
         return { data: null, error };
       }
 
-      // Transform to summary format
+      // Transform to summary format with UI-friendly field names
       const summaries: ExternalReportSummary[] = (data || []).map((report: any) => ({
         id: report.id,
         business_name: report.business_name || 'Unknown Business',
@@ -134,6 +152,7 @@ export class ExternalReportService {
 
   /**
    * Get a single report by ID with full details
+   * ✅ FIXED: Now applies UI field mapping
    */
   static async getReportById(
     reportId: string
@@ -151,7 +170,10 @@ export class ExternalReportService {
         return { data: null, error };
       }
 
-      return { data, error: null };
+      // ✅ Apply UI mapping
+      const mappedData = this.mapReportToUI(data);
+
+      return { data: mappedData, error: null };
     } catch (error: any) {
       console.error('Exception fetching report:', error);
       return { data: null, error };
@@ -160,6 +182,7 @@ export class ExternalReportService {
 
   /**
    * Get report by share token (public access, no auth required)
+   * ✅ FIXED: Now applies UI field mapping
    */
   static async getReportByToken(
     token: string
@@ -183,7 +206,10 @@ export class ExternalReportService {
         await this.incrementViewCount(data.id);
       }
 
-      return { data, error: null };
+      // ✅ Apply UI mapping
+      const mappedData = this.mapReportToUI(data);
+
+      return { data: mappedData, error: null };
     } catch (error: any) {
       console.error('Exception fetching report by token:', error);
       return { data: null, error };
@@ -284,12 +310,13 @@ export class ExternalReportService {
 
   /**
    * Get report statistics
+   * ✅ FIXED: Returns correct field names matching ExternalReportStats interface
    */
   static async getReportStats(): Promise<{ data: ExternalReportStats | null; error: any }> {
     try {
       const { data, error } = await supabase
         .from('ai_visibility_external_reports')
-        .select('status, api_cost_usd, processing_duration_ms')
+        .select('status, api_cost_usd, processing_duration_ms, overall_score, share_views')
         .is('deleted_at', null);
 
       if (error) {
@@ -297,15 +324,22 @@ export class ExternalReportService {
         return { data: null, error };
       }
 
+      // Calculate stats with correct field names
+      const completedReports = data.filter((r: any) => r.status === 'completed');
+      const totalScore = completedReports.reduce((sum: number, r: any) => sum + (r.overall_score || 0), 0);
+
       const stats: ExternalReportStats = {
-        total_reports: data.length,
-        completed_reports: data.filter((r: any) => r.status === 'completed').length,
-        pending_reports: data.filter((r: any) => r.status === 'pending' || r.status === 'generating').length,
-        error_reports: data.filter((r: any) => r.status === 'error').length,
-        total_cost_usd: data.reduce((sum: number, r: any) => sum + (r.api_cost_usd || 0), 0),
+        total: data.length,
+        pending: data.filter((r: any) => r.status === 'pending').length,
+        generating: data.filter((r: any) => r.status === 'generating').length,
+        completed: completedReports.length,
+        error: data.filter((r: any) => r.status === 'error').length,
+        average_score: completedReports.length > 0 ? totalScore / completedReports.length : 0,
+        total_views: data.reduce((sum: number, r: any) => sum + (r.share_views || 0), 0),
         avg_processing_time_ms: data.length > 0
           ? data.reduce((sum: number, r: any) => sum + (r.processing_duration_ms || 0), 0) / data.length
-          : 0
+          : 0,
+        total_cost_usd: data.reduce((sum: number, r: any) => sum + (r.api_cost_usd || 0), 0)
       };
 
       return { data: stats, error: null };
@@ -314,11 +348,6 @@ export class ExternalReportService {
       return { data: null, error };
     }
   }
-
-  /**
- * Get report by share token (public access)
- */
-
 
   /**
    * Increment share view count

@@ -1,5 +1,7 @@
 // src/components/pages/AIReportHistory.tsx
 // Page for viewing all generated external reports
+// PHASE 3: Fixed Preview, Export PDF, and Copy JSON functionality
+// FIXED: All stats field names corrected to match ExternalReportStats interface
 
 import { CheckCircle, Clock, DollarSign, FileText, Search } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
@@ -18,7 +20,7 @@ export const AIReportHistory: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [dateFrom, setDateFrom] = useState<string>('');
-  const [dateTo, setDateTo] = useState<string>('');
+  const [dateTo] = useState<string>('');
 
   useEffect(() => {
     loadUser();
@@ -75,28 +77,166 @@ export const AIReportHistory: React.FC = () => {
     setStats(data);
   };
 
+  // PHASE 3 FIX #1: Preview Report - Open the share URL
   const handlePreview = (reportId: string) => {
-    // Navigate to report preview or open modal
-    window.open(`/admin/reports/${reportId}`, '_blank');
+    // Find the report to get its share URL
+    const report = reports.find(r => r.id === reportId);
+    
+    if (report && report.share_url) {
+      // Open the working share URL in a new tab
+      window.open(report.share_url, '_blank');
+    } else {
+      // Fallback: construct the share URL from share_token
+      const shareToken = report?.share_token;
+      if (shareToken) {
+        window.open(`/share/${shareToken}`, '_blank');
+      } else {
+        showNotification('Report share link not available', 'error');
+      }
+    }
   };
 
+  // PHASE 3 FIX #2: Export PDF - Generate PDF from report
   const handleExportPDF = async (reportId: string) => {
-    alert('PDF export functionality - to be implemented with jsPDF');
-    // TODO: Implement PDF export
+    try {
+      showNotification('Preparing PDF export...', 'info');
+      
+      // Get the full report data
+      const { data: reportData, error } = await ExternalReportService.getReportById(reportId);
+      
+      if (error || !reportData) {
+        showNotification('Failed to load report data', 'error');
+        return;
+      }
+
+      // Use html2pdf for client-side PDF generation
+      // First, check if html2pdf is available
+      if (typeof window !== 'undefined' && (window as any).html2pdf) {
+        const html2pdf = (window as any).html2pdf;
+        
+        // Open the share URL in a hidden iframe to get the rendered content
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        iframe.src = reportData.share_url || `/share/${reportData.share_token}`;
+        document.body.appendChild(iframe);
+        
+        // Wait for iframe to load
+        iframe.onload = () => {
+          setTimeout(() => {
+            const content = iframe.contentDocument?.body;
+            if (content) {
+              const opt = {
+                margin: 0.5,
+                filename: `AI-Visibility-Report-${reportData.business_name || reportData.target_website}.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true },
+                jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+              };
+              
+              html2pdf().set(opt).from(content).save().then(() => {
+                showNotification('PDF exported successfully!', 'success');
+                document.body.removeChild(iframe);
+              });
+            } else {
+              showNotification('Failed to generate PDF', 'error');
+              document.body.removeChild(iframe);
+            }
+          }, 2000); // Wait 2 seconds for content to fully load
+        };
+      } else {
+        // Fallback: Open print dialog
+        const report = reports.find(r => r.id === reportId);
+        if (report && report.share_url) {
+          window.open(report.share_url + '?print=true', '_blank');
+          showNotification('Opening report for printing...', 'info');
+        }
+      }
+    } catch (err) {
+      console.error('PDF export error:', err);
+      showNotification('PDF export failed', 'error');
+    }
+  };
+
+  // PHASE 3: Enhanced notification system (better than alerts)
+  const showNotification = (message: string, type: 'success' | 'error' | 'info') => {
+    // Create a toast notification element
+    const toast = document.createElement('div');
+    const bgColor = type === 'success' ? 'bg-green-600' : type === 'error' ? 'bg-red-600' : 'bg-blue-600';
+    
+    toast.className = `fixed top-4 right-4 ${bgColor} text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-fade-in`;
+    toast.textContent = message;
+    
+    document.body.appendChild(toast);
+    
+    // Remove after 3 seconds
+    setTimeout(() => {
+      toast.classList.add('animate-fade-out');
+      setTimeout(() => document.body.removeChild(toast), 300);
+    }, 3000);
   };
 
   const handleCopyShareLink = (shareUrl: string) => {
     navigator.clipboard.writeText(shareUrl);
-    alert('Share link copied to clipboard!');
+    showNotification('Share link copied to clipboard!', 'success');
   };
 
+  // PHASE 3 FIX #3: Copy JSON - Ensure complete report data is copied
   const handleCopyJSON = async (reportId: string) => {
-    const { data } = await ExternalReportService.getReportById(reportId);
-    
-    if (data && data.report_data) {
-      const json = JSON.stringify(data.report_data, null, 2);
-      navigator.clipboard.writeText(json);
-      alert('JSON data copied to clipboard!');
+    try {
+      const { data, error } = await ExternalReportService.getReportById(reportId);
+      
+      if (error) {
+        showNotification('Failed to load report data', 'error');
+        return;
+      }
+      
+      if (data) {
+        // Create a comprehensive JSON export with all report data
+        const completeReportData = {
+          // Basic Info
+          id: data.id,
+          target_website: data.target_website,
+          business_name: data.business_name,
+          business_type: data.business_type,
+          business_location: data.business_location,
+          
+          // Scores and Status
+          overall_score: data.overall_score,
+          status: data.status,
+          
+          // Complete Report Data
+          report_data: data.report_data,
+          
+          // AI Platform Scores (Full detail)
+          ai_platform_scores: data.ai_platform_scores,
+          
+          // Competitor Analysis
+          competitor_analysis: data.competitor_analysis,
+          
+          // Content Gap Analysis
+          content_gap_analysis: data.content_gap_analysis,
+          
+          // Recommendations
+          recommendations: data.recommendations,
+          
+          // Metadata
+          share_url: data.share_url,
+          share_token: data.share_token,
+          generated_at: data.generated_at,
+          generated_by: data.generated_by,
+          processing_time_ms: data.processing_time_ms,
+          estimated_cost_usd: data.estimated_cost_usd
+        };
+        
+        const json = JSON.stringify(completeReportData, null, 2);
+        await navigator.clipboard.writeText(json);
+        showNotification('Complete report data copied as JSON!', 'success');
+      } else {
+        showNotification('No report data available', 'error');
+      }
+    } catch (err) {
+      console.error('Copy JSON error:', err);
+      showNotification('Failed to copy JSON data', 'error');
     }
   };
 
@@ -108,9 +248,9 @@ export const AIReportHistory: React.FC = () => {
     const { error } = await ExternalReportService.deleteReport(reportId, userId);
 
     if (error) {
-      alert('Error deleting report: ' + error.message);
+      showNotification('Error deleting report: ' + error.message, 'error');
     } else {
-      alert('Report deleted successfully');
+      showNotification('Report deleted successfully', 'success');
       loadReports();
       loadStats();
     }
@@ -120,16 +260,6 @@ export const AIReportHistory: React.FC = () => {
     return `$${amount.toFixed(2)}`;
   };
 
-  const formatDuration = (ms: number): string => {
-    const seconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-
-    if (minutes > 0) {
-      return `${minutes}m ${remainingSeconds}s`;
-    }
-    return `${seconds}s`;
-  };
 
   return (
     <div className="p-6 space-y-6">
@@ -154,7 +284,7 @@ export const AIReportHistory: React.FC = () => {
               <span className="text-sm text-gray-600 dark:text-gray-400">Total Reports</span>
             </div>
             <div className="text-2xl font-bold text-gray-900 dark:text-white">
-              {stats.total_reports}
+              {stats.total}
             </div>
           </div>
 
@@ -166,7 +296,7 @@ export const AIReportHistory: React.FC = () => {
               <span className="text-sm text-gray-600 dark:text-gray-400">Completed</span>
             </div>
             <div className="text-2xl font-bold text-gray-900 dark:text-white">
-              {stats.completed_reports}
+              {stats.completed}
             </div>
           </div>
 
@@ -178,7 +308,7 @@ export const AIReportHistory: React.FC = () => {
               <span className="text-sm text-gray-600 dark:text-gray-400">Pending</span>
             </div>
             <div className="text-2xl font-bold text-gray-900 dark:text-white">
-              {stats.pending_reports}
+              {stats.pending}
             </div>
           </div>
 
@@ -190,7 +320,7 @@ export const AIReportHistory: React.FC = () => {
               <span className="text-sm text-gray-600 dark:text-gray-400">Total Cost</span>
             </div>
             <div className="text-2xl font-bold text-gray-900 dark:text-white">
-              {formatCurrency(stats.total_cost_usd)}
+              {formatCurrency(stats.total_cost_usd || 0)}
             </div>
           </div>
         </div>

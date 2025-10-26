@@ -6,6 +6,42 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>OK Local GBP Copilot - The Future of Local Marketing</title>
     <meta name="description" content="Sophisticated Google Business Profile management platform with AI-powered automation, comprehensive analytics, and enterprise-grade security." />
+    
+    <!-- html2pdf.js for PDF export functionality -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    
+    <!-- Toast notification animations -->
+    <style>
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(-20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      
+      @keyframes fadeOut {
+        from {
+          opacity: 1;
+          transform: translateY(0);
+        }
+        to {
+          opacity: 0;
+          transform: translateY(-20px);
+        }
+      }
+      
+      .animate-fade-in {
+        animation: fadeIn 0.3s ease-out;
+      }
+      
+      .animate-fade-out {
+        animation: fadeOut 0.3s ease-in;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
