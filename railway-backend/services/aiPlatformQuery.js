@@ -17,9 +17,9 @@ const MODEL_CONFIG = {
     'gpt-3.5-turbo'     // ✅ Confirmed working
   ],
   claude: [
-    'claude-sonnet-4-5-20250929',  // ✅ This is the one that worked before!
-    'claude-3-5-sonnet-20240620',  // ✅ Correct stable version
-    'claude-3-opus-20240307'       // ✅ Correct Opus version
+    'claude-sonnet-4-5-20250929',  // ✅ Confirmed working - Most powerful
+    'claude-sonnet-4-20250514',    // ✅ Confirmed working - Alternative Sonnet 4
+    'claude-3-5-haiku-20241022'    // ✅ Confirmed working - Fast & newest Haiku
   ],
   gemini: [
     'gemini-2.5-pro-preview-03-25',  // ✅ Confirmed working (v1beta) - Most powerful
