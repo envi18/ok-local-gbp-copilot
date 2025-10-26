@@ -3,7 +3,6 @@
 // Optimized for reliability - uses models we've confirmed work
 
 import Anthropic from '@anthropic-ai/sdk';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import OpenAI from 'openai';
 
 /**
@@ -23,9 +22,9 @@ const MODEL_CONFIG = {
     'claude-3-opus-20240307'       // ✅ Correct Opus version
   ],
   gemini: [
-    'gemini-1.5-flash',      // Most likely to work (fast, stable)
-    'gemini-1.5-pro',        // Production stable
-    'gemini-pro'             // Fallback (older but reliable)
+    'gemini-2.5-pro-preview-03-25',  // ✅ Confirmed working (v1beta) - Most powerful
+    'gemini-2.0-flash-exp',           // ✅ Confirmed working (v1beta) - Fast experimental
+    'gemini-2.0-flash'                // ✅ Confirmed working (v1beta) - Fast stable
   ],
   perplexity: [
     'sonar',            // ✅ Confirmed working (best results!)
@@ -295,22 +294,46 @@ async function queryClaude(businessInfo, model) {
 
 /**
  * Query Gemini with specific model
+ * NOTE: All working Gemini models require v1beta endpoint
  */
 async function queryGemini(businessInfo, model) {
   try {
-    if (!process.env.GOOGLE_API_KEY) {
-      throw new Error('Google API key not configured');
+    // Use separate Gemini-specific API key (fallback to GOOGLE_API_KEY for backward compatibility)
+    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+    
+    if (!apiKey) {
+      throw new Error('Gemini API key not configured');
     }
-
-    const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-    const geminiModel = genAI.getGenerativeModel({ model: model });
 
     const prompt = buildQueryPrompt(businessInfo);
     const systemPrompt = 'You are an AI knowledge assessment tool. When asked about a business, provide a JSON response with: mentioned (boolean), mention_count (number 0-10), knowledge_level (None/Low/Medium/High), facts_known (array of facts), confidence (0-100). Be honest - if you don\'t know the business, say so.';
 
-    const result = await geminiModel.generateContent(`${systemPrompt}\n\n${prompt}`);
-    const response = result.response.text();
-    const parsed = parseAIResponse(response, model);
+    // Use v1beta endpoint directly (all working models require this)
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{ text: `${systemPrompt}\n\n${prompt}` }]
+        }]
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(`Gemini API error: ${errorData.error?.message || response.statusText}`);
+    }
+
+    const data = await response.json();
+    
+    if (!data.candidates || !data.candidates[0]) {
+      throw new Error('No response candidates from Gemini');
+    }
+
+    const text = data.candidates[0].content.parts[0].text;
+    const parsed = parseAIResponse(text, model);
     
     return {
       ...parsed,
