@@ -368,4 +368,4 @@ export const AIReportHistory: React.FC = () => {
       )}
     </div>
   );
-}
+};
