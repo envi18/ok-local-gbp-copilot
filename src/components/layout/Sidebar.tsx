@@ -72,22 +72,49 @@ const settingsItems: NavItem[] = [
     label: 'AI Reports', 
     icon: FileBarChart, 
     requiredRole: 'admin',
-    badge: 'NEW',
-    badgeVariant: 'gradient'
+    //badge: 'NEW',
+   // badgeVariant: 'gradient'
   },
   
   {
     id: 'google-profile',
     label: 'Google Profile',
     icon: Link, // or Globe, or CheckCircle
-    badge: 'Mock',
-    badgeVariant: 'gradient' as const,
+   // badge: 'Mock',
+   // badgeVariant: 'gradient' as const,
     requiredRole: 'user' // Available to all users
   },
-  { id: 'command-center', label: 'Command Center', icon: Zap, requiredRole: 'admin', badge: 'LIVE', badgeVariant: 'success' },
-  { id: 'mock-data', label: 'Mock Data', icon: Database, requiredRole: 'admin', badge: 'DEV', badgeVariant: 'info' },
-  { id: 'sample-data', label: 'Sample Data', icon: Database, requiredRole: 'admin', badge: 'SQL', badgeVariant: 'gradient' },
-  { id: 'onboarding', label: 'Onboarding', icon: UserPlus, badge: 'Step-by-step', badgeVariant: 'info', allowedRoles: ['manager', 'admin'] },
+  { id: 'command-center', 
+    label: 'Command Center', 
+    icon: Zap, 
+    requiredRole: 'admin', 
+    //badge: 'LIVE', 
+   // badgeVariant: 'success' 
+  },
+
+  { id: 'mock-data', 
+    label: 'Mock Data', 
+    icon: Database, 
+    requiredRole: 'admin', 
+    //badge: 'DEV', 
+   // badgeVariant: 'info' 
+  },
+
+  { id: 'sample-data', 
+    label: 'Sample Data', 
+    icon: Database, 
+    requiredRole: 'admin',
+    //badge: 'SQL', 
+   // badgeVariant: 'gradient' 
+  },
+  
+  { id: 'onboarding', 
+    label: 'Onboarding', 
+    icon: UserPlus, 
+    //badge: 'Step-by-step', 
+    //badgeVariant: 'info', 
+    allowedRoles: ['manager', 'admin'] 
+  },
 ];
 
 export const Sidebar: React.FC<SidebarProps> = ({

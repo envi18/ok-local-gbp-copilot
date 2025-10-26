@@ -1,10 +1,10 @@
+import { Brain, Eye, EyeOff, Lock, Mail, MapPin, Shield } from 'lucide-react';
 import React, { useState } from 'react';
-import { Shield, Brain, MapPin, Mail, Lock, Eye, EyeOff } from 'lucide-react';
-import { Card } from '../ui/Card';
-import { Button } from '../ui/Button';
-import { Badge } from '../ui/Badge';
 import { useTheme } from '../../contexts/ThemeContext';
 import { supabase } from '../../lib/supabase';
+import { Badge } from '../ui/Badge';
+import { Button } from '../ui/Button';
+import { Card } from '../ui/Card';
 
 interface LoginProps {
   onLogin: (user: any) => void;
@@ -12,8 +12,8 @@ interface LoginProps {
 
 export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const { theme } = useTheme();
-  const [email, setEmail] = useState('demo@acmecorp.com');
-  const [password, setPassword] = useState('demo123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -239,8 +239,8 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                   Quick Start
                 </h4>
                 <div className="text-sm text-blue-800 dark:text-blue-200">
-                  <p className="mb-1">Create an account with any email to test the platform.</p>
-                  <p className="text-xs">Default credentials are prefilled for convenience.</p>
+                  <p className="mb-1">Create an account with any email to explore the platform features.</p>
+                  <p className="text-xs">Full functionality available for testing and evaluation.</p>
                 </div>
               </Card>
             </Card>
@@ -250,4 +250,3 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     </div>
   );
 };
-
