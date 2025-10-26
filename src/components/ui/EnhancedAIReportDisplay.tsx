@@ -1,5 +1,6 @@
 // src/components/ui/EnhancedAIReportDisplay.tsx
 // PHASE B: Updated with Real AI Platform Scores and Knowledge Comparison
+// FIXED: Added showMetadata prop to hide admin-only stats from public reports
 import {
   AlertTriangle,
   CheckCircle,
@@ -17,10 +18,12 @@ import { Badge } from './Badge';
 
 interface EnhancedAIReportDisplayProps {
   report: ExternalReport;
+  showMetadata?: boolean;  // ✅ ADDED: Controls visibility of admin-only stats
 }
 
 export const EnhancedAIReportDisplay: React.FC<EnhancedAIReportDisplayProps> = ({ 
-  report
+  report,
+  showMetadata = true  // ✅ ADDED: Defaults to true for backward compatibility
 }) => {
   // PHASE A FIX #3: Competitors expanded by default
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -49,6 +52,72 @@ export const EnhancedAIReportDisplay: React.FC<EnhancedAIReportDisplayProps> = (
         platformScores.reduce((sum: number, ps: any) => sum + (ps.score || 0), 0) / platformScores.length
       )
     : report.overall_score || 0;
+
+  // Transform ai_knowledge_comparison data from old format to new format
+  const transformKnowledgeComparison = (oldFormat: any) => {
+    if (!oldFormat || !oldFormat.main_business) return null;
+
+    // Extract all unique platforms from scores
+    const allPlatforms = new Set<string>();
+    const businesses = [];
+
+    // Process main business
+    if (oldFormat.main_business && oldFormat.main_business.scores) {
+      Object.keys(oldFormat.main_business.scores).forEach(p => allPlatforms.add(p));
+      
+      const platformScores = Object.entries(oldFormat.main_business.scores).map(([platform, score]) => ({
+        platform,
+        score: score as number,
+        knowledge_level: (score as number) >= 80 ? 'high' : (score as number) >= 50 ? 'medium' : (score as number) > 0 ? 'low' : 'none',
+        mention_count: (score as number) > 0 ? 1 : 0
+      }));
+
+      businesses.push({
+        name: oldFormat.main_business.name,
+        is_target: true,
+        platform_scores: platformScores,
+        overall_score: Math.round(
+          platformScores.reduce((sum, ps) => sum + ps.score, 0) / platformScores.length
+        ),
+        total_mentions: platformScores.filter(ps => ps.score > 0).length
+      });
+    }
+
+    // Process competitors
+    if (oldFormat.competitors && Array.isArray(oldFormat.competitors)) {
+      oldFormat.competitors.forEach((comp: any) => {
+        if (comp.scores) {
+          Object.keys(comp.scores).forEach(p => allPlatforms.add(p));
+          
+          const platformScores = Object.entries(comp.scores).map(([platform, score]) => ({
+            platform,
+            score: score as number,
+            knowledge_level: (score as number) >= 80 ? 'high' : (score as number) >= 50 ? 'medium' : (score as number) > 0 ? 'low' : 'none',
+            mention_count: (score as number) > 0 ? 1 : 0
+          }));
+
+          businesses.push({
+            name: comp.name,
+            is_target: false,
+            platform_scores: platformScores,
+            overall_score: Math.round(
+              platformScores.reduce((sum, ps) => sum + ps.score, 0) / platformScores.length
+            ),
+            total_mentions: platformScores.filter(ps => ps.score > 0).length
+          });
+        }
+      });
+    }
+
+    return {
+      businesses,
+      platforms: Array.from(allPlatforms)
+    };
+  };
+
+  const transformedKnowledgeComparison = report.ai_knowledge_comparison 
+    ? transformKnowledgeComparison(report.ai_knowledge_comparison)
+    : null;
 
   // PHASE A FIX #1: Correct school grading scale
   const getGrade = (score: number): string => {
@@ -174,24 +243,26 @@ export const EnhancedAIReportDisplay: React.FC<EnhancedAIReportDisplayProps> = (
                       {score}/100
                     </span>
                   </div>
-                  <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden mb-2">
+                  <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden mb-2">
                     <div
                       className={`h-full transition-all ${
-                        score >= 70 ? 'bg-green-500' : score >= 40 ? 'bg-yellow-500' : score >= 1 ? 'bg-orange-500' : 'bg-gray-400'
+                        score >= 80 ? 'bg-green-500' :
+                        score >= 60 ? 'bg-yellow-500' :
+                        score >= 40 ? 'bg-orange-500' :
+                        'bg-red-500'
                       }`}
                       style={{ width: `${score}%` }}
                     />
                   </div>
-                  {/* PHASE B: Show mention count */}
                   <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
                     <span>{details}</span>
-                    {mentioned && (
-                      <span className="font-medium text-blue-600 dark:text-blue-400">
-                        Mentioned {mentionCount} time{mentionCount !== 1 ? 's' : ''}
+                    {mentioned && mentionCount > 0 && (
+                      <span className="text-blue-600 dark:text-blue-400 font-medium">
+                        Mentioned {mentionCount} {mentionCount === 1 ? 'time' : 'times'}
                       </span>
                     )}
                     {!mentioned && (
-                      <span className="text-gray-400 dark:text-gray-500">
+                      <span className="text-gray-500 dark:text-gray-500">
                         Not found
                       </span>
                     )}
@@ -204,7 +275,7 @@ export const EnhancedAIReportDisplay: React.FC<EnhancedAIReportDisplayProps> = (
       )}
 
       {/* Top Competitors Analysis */}
-      {competitorAnalysis.competitors && competitorAnalysis.competitors.length > 0 && (
+      {competitorAnalysis.top_competitors && competitorAnalysis.top_competitors.length > 0 && (
         <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
@@ -227,53 +298,46 @@ export const EnhancedAIReportDisplay: React.FC<EnhancedAIReportDisplayProps> = (
               {expandedSections.competitors ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
             </button>
           </div>
-
+          
           {expandedSections.competitors && (
             <div className="space-y-4">
-              {competitorAnalysis.competitors.map((competitor: any, idx: number) => (
+              {competitorAnalysis.top_competitors.map((competitor: any, idx: number) => (
                 <div key={idx} className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-                  <div className="flex items-start justify-between mb-3">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">
-                          #{idx + 1}
-                        </span>
-                        <h4 className="font-semibold text-gray-900 dark:text-white">
-                          {competitor.name || 'Unknown Competitor'}
-                        </h4>
-                      </div>
-                      {competitor.website && (
-                        <a
-                          href={competitor.website}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
-                        >
-                          {competitor.website}
-                          <ExternalLink size={12} />
-                        </a>
-                      )}
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="flex items-center justify-center w-6 h-6 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-full text-xs font-bold">
+                        #{idx + 1}
+                      </span>
+                      <h4 className="font-semibold text-gray-900 dark:text-white">
+                        {competitor.name}
+                      </h4>
                     </div>
                   </div>
-                  {competitor.strengths && competitor.strengths.length > 0 && (
-                    <div className="mt-3">
-                      <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                  {competitor.url && (
+                    <a
+                      href={competitor.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 mb-2"
+                    >
+                      {competitor.url}
+                      <ExternalLink size={12} />
+                    </a>
+                  )}
+                  {competitor.strengths && (
+                    <div className="mb-2">
+                      <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">
                         Competitive Strengths:
+                      </span>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                        {competitor.strengths}
                       </p>
-                      <div className="flex flex-wrap gap-2">
-                        {competitor.strengths.map((strength: string, sIdx: number) => (
-                          <Badge key={sIdx} variant="info" size="sm">
-                            {strength}
-                          </Badge>
-                        ))}
-                      </div>
                     </div>
                   )}
-                  {/* PHASE B: Show AI visibility for competitor */}
-                  {competitor.ai_visibility && (
-                    <p className="text-xs text-gray-600 dark:text-gray-400 mt-2">
-                      Mentioned on {competitor.ai_visibility.total_platforms_mentioned} platform(s)
-                    </p>
+                  {competitor.platforms_mentioned > 0 && (
+                    <span className="text-xs text-gray-500 dark:text-gray-500">
+                      Mentioned on {competitor.platforms_mentioned} platform(s)
+                    </span>
                   )}
                 </div>
               ))}
@@ -282,47 +346,33 @@ export const EnhancedAIReportDisplay: React.FC<EnhancedAIReportDisplayProps> = (
         </div>
       )}
 
-      {/* PHASE B: AI Knowledge Scores Comparison Table */}
-      {report.ai_knowledge_comparison && (
-        <AIKnowledgeScoresTable aiKnowledgeComparison={report.ai_knowledge_comparison} />
+      {/* AI Knowledge Comparison Table */}
+      {transformedKnowledgeComparison && (
+        <AIKnowledgeScoresTable aiKnowledgeComparison={transformedKnowledgeComparison} />
       )}
 
-      {/* PHASE A FIX #5: Split Competitive Intelligence into 2 separate sections */}
-      
-      {/* Your Competitive Advantages - NEW separate green section */}
-      {competitorAnalysis.competitive_advantages && competitorAnalysis.competitive_advantages.length > 0 && (
-        <div className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-lg border border-green-200 dark:border-green-800 p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg">
-              <CheckCircle size={24} className="text-green-600 dark:text-green-400" />
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Your Competitive Advantages
-            </h3>
-          </div>
-          <ul className="space-y-3">
-            {competitorAnalysis.competitive_advantages.map((adv: string, idx: number) => (
+      {/* Competitive Advantages & Weaknesses */}
+      {(competitorAnalysis.competitive_advantages?.length > 0 || 
+        competitorAnalysis.competitive_weaknesses?.length > 0) && (
+        <div className="bg-gradient-to-br from-green-50 to-blue-50 dark:from-green-900/10 dark:to-blue-900/10 rounded-lg border border-green-200 dark:border-green-800 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <CheckCircle size={20} className="text-green-600 dark:text-green-400" />
+            Your Competitive Advantages
+          </h3>
+          <ul className="space-y-2 mb-6">
+            {competitorAnalysis.competitive_advantages.map((advantage: string, idx: number) => (
               <li key={idx} className="flex items-start gap-3">
                 <CheckCircle size={18} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
-                <span className="text-gray-700 dark:text-gray-300">{adv}</span>
+                <span className="text-gray-700 dark:text-gray-300">{advantage}</span>
               </li>
             ))}
           </ul>
-        </div>
-      )}
-
-      {/* Areas to Improve - NEW separate orange section */}
-      {competitorAnalysis.competitive_weaknesses && competitorAnalysis.competitive_weaknesses.length > 0 && (
-        <div className="bg-gradient-to-br from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 rounded-lg border border-orange-200 dark:border-orange-800 p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-orange-100 dark:bg-orange-900/30 rounded-lg">
-              <AlertTriangle size={24} className="text-orange-600 dark:text-orange-400" />
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Areas to Improve
-            </h3>
-          </div>
-          <ul className="space-y-3">
+          
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <AlertTriangle size={20} className="text-orange-600 dark:text-orange-400" />
+            Areas to Improve
+          </h3>
+          <ul className="space-y-2">
             {competitorAnalysis.competitive_weaknesses.map((weakness: string, idx: number) => (
               <li key={idx} className="flex items-start gap-3">
                 <AlertTriangle size={18} className="text-orange-600 dark:text-orange-400 mt-0.5 flex-shrink-0" />
@@ -463,35 +513,37 @@ export const EnhancedAIReportDisplay: React.FC<EnhancedAIReportDisplayProps> = (
         </div>
       )}
 
-      {/* Summary Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-          <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Generation Time</div>
-          <div className="text-2xl font-bold text-gray-900 dark:text-white">
-            {report.processing_duration_ms 
-              ? `${(report.processing_duration_ms / 1000).toFixed(1)}s`
-              : 'N/A'}
+      {/* Summary Stats - ADMIN ONLY */}
+      {showMetadata && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+            <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Generation Time</div>
+            <div className="text-2xl font-bold text-gray-900 dark:text-white">
+              {report.processing_duration_ms 
+                ? `${(report.processing_duration_ms / 1000).toFixed(1)}s`
+                : 'N/A'}
+            </div>
+          </div>
+          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+            <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">API Cost</div>
+            <div className="text-2xl font-bold text-gray-900 dark:text-white">
+              ${report.api_cost_usd ? Number(report.api_cost_usd).toFixed(2) : '0.00'}
+            </div>
+          </div>
+          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+            <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Queries Executed</div>
+            <div className="text-2xl font-bold text-gray-900 dark:text-white">
+              {report.query_count || 0}
+            </div>
+          </div>
+          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+            <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Report Views</div>
+            <div className="text-2xl font-bold text-gray-900 dark:text-white">
+              {report.share_views || 0}
+            </div>
           </div>
         </div>
-        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-          <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">API Cost</div>
-          <div className="text-2xl font-bold text-gray-900 dark:text-white">
-            ${report.api_cost_usd ? Number(report.api_cost_usd).toFixed(2) : '0.00'}
-          </div>
-        </div>
-        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-          <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Queries Executed</div>
-          <div className="text-2xl font-bold text-gray-900 dark:text-white">
-            {report.query_count || 0}
-          </div>
-        </div>
-        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-          <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Report Views</div>
-          <div className="text-2xl font-bold text-gray-900 dark:text-white">
-            {report.share_views || 0}
-          </div>
-        </div>
-      </div>
+      )}
     </div>
   );
 };
