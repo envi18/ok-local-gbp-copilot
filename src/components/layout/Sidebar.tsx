@@ -23,8 +23,6 @@ import {
 } from 'lucide-react';
 import React from 'react';
 import { Badge } from '../ui/Badge';
-import { Button } from '../ui/Button';
-import { Card } from '../ui/Card';
 
 
 interface NavItem {
@@ -246,25 +244,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 ))}
               </nav>
             </div>
-          </div>
-          
-          {/* Sidebar Footer */}
-          <div className="p-4 border-t border-white/20 dark:border-white/10">
-            <Card className="p-4">
-              <div className="flex items-center gap-3 mb-3">
-                <div className={`w-8 h-8 rounded-full bg-gradient-to-r ${roleInfo.color} flex items-center justify-center`}>
-                  <span className="text-white text-sm font-medium">DU</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">Demo User</p>
-                  <p className="text-xs text-gray-600 dark:text-gray-400 truncate">{roleInfo.label}</p>
-                </div>
-              </div>
-              <Button variant="secondary" size="sm" className="w-full">
-                <Settings size={14} className="mr-2" />
-                Account Settings
-              </Button>
-            </Card>
           </div>
         </div>
       </aside>
