@@ -328,7 +328,7 @@ export const GoogleProfileSimulator: React.FC = () => {
           reviewerName={pendingReviewResponse.review.reviewer.displayName}
           starRating={pendingReviewResponse.review.starRating || 0}
           draftedResponse={pendingReviewResponse.draftedResponse}
-          seoKeywords={DEFAULT_SEO_KEYWORDS.primaryKeywords.slice(0, 3)}
+          seoKeywords={DEFAULT_SEO_KEYWORDS.primary.slice(0, 3)}
         />
       )}
 
