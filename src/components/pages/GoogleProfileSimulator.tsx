@@ -1,26 +1,20 @@
 // src/components/pages/GoogleProfileSimulator.tsx
-// COMPLETE VERSION WITH ALL FEATURES - 4 PARTS TOTAL
-// Part 1 of 4: Imports, Types, and Initial Setup
+// ENHANCED VERSION WITH BACKGROUND SYNC SYSTEM - FIXED FOR CORRECT PROPERTY NAMES
+// Part 1 of 2: Imports, Types, State, and Handlers
 
 import {
-  AlertCircle,
+  Bell,
   Bookmark,
-  Calendar,
   CheckCircle,
-  ChevronDown,
   Clock,
-  ExternalLink,
   Globe,
   Loader,
   MapPin,
-  Menu,
   MessageCircle,
   Navigation,
   Phone,
-  Plus,
   Share2,
   Star,
-  Tag,
   ThumbsUp
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
@@ -39,14 +33,17 @@ import {
 } from '../../lib/mockGoogleBusinessData';
 
 import {
+  BackgroundSyncManager,
   DEFAULT_SEO_KEYWORDS,
-  generateAIReviewResponse,
-  getAutomationAction,
-  simulateProcessingDelay
+  SYNC_INTERVAL_PRODUCTION,
+  type SyncLog,
+  type SyncStatus
 } from '../../lib/reviewAutomationService';
 
-import { ResponsePreviewModal } from '../../components/ui/ResponsePreviewModal';
-import { QuestionSubmissionModal, ReviewSubmissionModal } from '../../components/ui/ReviewAndQuestionModals';
+import { DebugLogPanel } from '../ui/DebugLogPanel';
+import { NotificationDropdown, type AppNotification } from '../ui/NotificationDropdown';
+import { ResponsePreviewModal } from '../ui/ResponsePreviewModal';
+import { QuestionSubmissionModal, ReviewSubmissionModal } from '../ui/ReviewAndQuestionModals';
 
 interface Notification {
   id: string;
@@ -74,8 +71,22 @@ export const GoogleProfileSimulator: React.FC = () => {
     draftedResponse: string;
   } | null>(null);
   
-  // Notification state
+  // Notification states
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [appNotifications, setAppNotifications] = useState<AppNotification[]>([]);
+  const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] = useState<boolean>(false);
+  
+  // Background Sync System States
+  const [syncManager] = useState(() => new BackgroundSyncManager(SYNC_INTERVAL_PRODUCTION));
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>({
+    lastSync: null,
+    nextSync: null,
+    isRunning: false,
+    interval: SYNC_INTERVAL_PRODUCTION,
+    pendingReviews: 0,
+    totalSyncs: 0
+  });
+  const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
   
   // Use first mock location
   const location: BusinessLocation = mockLocations[0];
@@ -93,214 +104,709 @@ export const GoogleProfileSimulator: React.FC = () => {
     ? reviews.reduce((sum, r) => sum + (r.starRating || 0), 0) / reviews.length
     : 0;
 
+  // Calculate unread reviews (reviews without responses)
+  const unreadReviews = reviews.filter(r => !r.reviewReply).length;
+
+  // Initialize background sync system
+  useEffect(() => {
+    // Set up sync callback
+    syncManager.onSync((processedReviews) => {
+      // Update reviews with generated responses
+      setReviews(prev => {
+        return prev.map(review => {
+          const processed = processedReviews.find(pr => pr.reviewId === review.reviewId);
+          if (processed && processed.reviewReply) {
+            // Add notification for auto-responded review
+            addAppNotification({
+              type: 'automation',
+              title: 'Auto-responded to Review',
+              message: `Automatically responded to ${processed.reviewer?.displayName}'s ${processed.starRating}-star review`
+            });
+            return processed;
+          }
+          return review;
+        });
+      });
+    });
+
+    // Set up log callback
+    syncManager.onLog((log) => {
+      setSyncLogs(prev => [log, ...prev].slice(0, 50)); // Keep last 50 logs
+      setSyncStatus(syncManager.getStatus());
+    });
+
+    // Start background sync
+    syncManager.start();
+    setSyncStatus(syncManager.getStatus());
+
+    // Cleanup on unmount
+    return () => {
+      syncManager.stop();
+    };
+  }, [syncManager]);
+
   // Simulate loading
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), 300);
     return () => clearTimeout(timer);
   }, []);
 
-  // Show notification
-  const showNotification = (type: Notification['type'], message: string) => {
-    const id = Date.now().toString();
-    setNotifications(prev => [...prev, { id, type, message }]);
-    setTimeout(() => {
-      setNotifications(prev => prev.filter(n => n.id !== id));
-    }, 5000);
+  // Auto-dismiss notifications
+  useEffect(() => {
+    if (notifications.length > 0) {
+      const timer = setTimeout(() => {
+        setNotifications(prev => prev.slice(0, -1));
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [notifications]);
+
+  // Helper: Add notification
+  const addNotification = (type: Notification['type'], message: string) => {
+    const notification: Notification = {
+      id: `notif-${Date.now()}`,
+      type,
+      message
+    };
+    setNotifications(prev => [notification, ...prev]);
   };
 
-  // Handle review submission
+  // Helper: Add app notification (for dropdown)
+  const addAppNotification = (params: Omit<AppNotification, 'id' | 'timestamp' | 'isRead'>) => {
+    const notification: AppNotification = {
+      id: `app-notif-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      isRead: false,
+      ...params
+    };
+    setAppNotifications(prev => [notification, ...prev]);
+  };
+
+  // Handle review submission - POST UNANSWERED FIRST
   const handleReviewSubmit = async (reviewData: {
-    reviewerName: string;
     starRating: number;
     reviewText: string;
+    reviewerName: string;
+    reviewerAvatar?: string;
   }) => {
-    showNotification('info', 'Processing new review...');
-
-    try {
-      const newReview: BusinessReview = {
-        name: `locations/location-001/reviews/review-${Date.now()}`,
-        reviewId: `review-${Date.now()}`,
-        reviewer: {
-          profilePhotoUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(reviewData.reviewerName)}&background=random`,
-          displayName: reviewData.reviewerName,
-          isAnonymous: false
-        },
-        starRating: reviewData.starRating,
-        comment: reviewData.reviewText,
-        createTime: new Date().toISOString(),
-        updateTime: new Date().toISOString(),
-        reviewReply: undefined
-      };
-
-      const automationRule = getAutomationAction(reviewData.starRating);
-      
-      if (!automationRule) {
-        throw new Error('No automation rule found for this rating');
-      }
-
-      showNotification('info', `Automation rule: ${automationRule.action.replace('_', ' ')}...`);
-      await simulateProcessingDelay(automationRule.responseDelay || 1000);
-
-      if (automationRule.action === 'manual_only') {
-        setReviews(prev => [newReview, ...prev]);
-        showNotification('warning', `Review added. Manual response required for ${reviewData.starRating}-star reviews.`);
-        
-      } else if (automationRule.action === 'draft_response') {
-        showNotification('info', 'Generating AI response...');
-        
-        const draftedResponse = await generateAIReviewResponse(
-          reviewData.reviewText,
-          reviewData.starRating,
-          reviewData.reviewerName,
-          DEFAULT_SEO_KEYWORDS
-        );
-
-        setPendingReviewResponse({
-          review: newReview,
-          draftedResponse
-        });
-        setIsResponsePreviewOpen(true);
-        
-      } else if (automationRule.action === 'auto_respond') {
-        showNotification('info', 'Generating AI response...');
-        
-        const autoResponse = await generateAIReviewResponse(
-          reviewData.reviewText,
-          reviewData.starRating,
-          reviewData.reviewerName,
-          DEFAULT_SEO_KEYWORDS
-        );
-
-        const reviewWithResponse: BusinessReview = {
-          ...newReview,
-          reviewReply: {
-            comment: autoResponse,
-            updateTime: new Date().toISOString()
-          }
-        };
-
-        setReviews(prev => [reviewWithResponse, ...prev]);
-        showNotification('success', '✅ Review received and auto-responded with AI-generated reply!');
-        setActiveTab('reviews');
-      }
-
-    } catch (error) {
-      console.error('Error processing review:', error);
-      showNotification('error', 'Failed to process review. Please try again.');
-    }
-  };
-
-  // Handle response approval
-  const handleResponseApproval = (finalResponse: string) => {
-    if (!pendingReviewResponse) return;
-
-    const reviewWithResponse: BusinessReview = {
-      ...pendingReviewResponse.review,
-      reviewReply: {
-        comment: finalResponse,
-        updateTime: new Date().toISOString()
-      }
+    // Create new review WITHOUT response
+    const newReview: BusinessReview = {
+      reviewId: `review-${Date.now()}`,
+      name: `locations/location-001/reviews/review-${Date.now()}`,
+      reviewer: {
+        displayName: reviewData.reviewerName,
+        profilePhotoUrl: reviewData.reviewerAvatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + reviewData.reviewerName,
+        isAnonymous: false
+      },
+      starRating: reviewData.starRating,
+      comment: reviewData.reviewText,
+      createTime: new Date().toISOString(),
+      updateTime: new Date().toISOString(),
+      reviewReply: undefined // NO RESPONSE YET - will be added during sync
     };
 
-    setReviews(prev => [reviewWithResponse, ...prev]);
-    showNotification('success', '✅ Response approved and published!');
-    setPendingReviewResponse(null);
-    setActiveTab('reviews');
+    // Add to reviews list immediately (shows UNANSWERED)
+    setReviews(prev => [newReview, ...prev]);
+    
+    // Queue for background processing
+    syncManager.addPendingReview(newReview);
+    
+    // Update sync status
+    setSyncStatus(syncManager.getStatus());
+    
+    // Close modal
+    setIsReviewModalOpen(false);
+    
+    // Show success notification
+    addNotification('success', 'Review posted! It will be processed during the next sync.');
+    
+    // Add app notification
+    addAppNotification({
+      type: 'review',
+      title: 'New Review Submitted',
+      message: `${reviewData.reviewerName} left a ${reviewData.starRating}-star review. Queued for automation.`
+    });
   };
 
-  // Handle question submission
-  const handleQuestionSubmit = (questionData: {
-    authorName: string;
+  // Handle question submission - FIXED: Changed askerName to authorName
+  const handleQuestionSubmit = async (question: {
     questionText: string;
+    authorName: string;
   }) => {
     const newQuestion: BusinessQA = {
       id: `qa-${Date.now()}`,
-      name: `locations/location-001/questions/qa-${Date.now()}`,
+      name: `locations/location-001/questions/${Date.now()}`,
       locationId: 'location-001',
       author: {
-        displayName: questionData.authorName,
-        profilePhotoUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(questionData.authorName)}&background=random`,
+        displayName: question.authorName,
+        profilePhotoUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(question.authorName)}`,
         type: 'USER'
       },
-      text: questionData.questionText,
+      text: question.questionText,
       createTime: new Date().toISOString(),
       updateTime: new Date().toISOString(),
-      upvoteCount: 0,
-      answers: []
+      upvoteCount: 0
     };
 
     setQuestions(prev => [newQuestion, ...prev]);
-    showNotification('success', '✅ Question added! Awaiting response.');
-    setActiveTab('qa');
+    setIsQuestionModalOpen(false);
+    addNotification('success', 'Question posted successfully!');
+    
+    // Add app notification
+    addAppNotification({
+      type: 'question',
+      title: 'New Question Asked',
+      message: `${question.authorName} asked: "${question.questionText}"`
+    });
   };
+
+  // Handle response approval
+  const handleResponseApproval = async () => {
+    if (!pendingReviewResponse) return;
+    
+    // Update review with approved response
+    setReviews(prev => prev.map(r => 
+      r.reviewId === pendingReviewResponse.review.reviewId
+        ? {
+            ...r,
+            reviewReply: {
+              comment: pendingReviewResponse.draftedResponse,
+              updateTime: new Date().toISOString()
+            }
+          }
+        : r
+    ));
+    
+    setIsResponsePreviewOpen(false);
+    setPendingReviewResponse(null);
+    addNotification('success', 'Response published successfully!');
+  };
+
+  // Debug Log Panel handlers
+  const handleForceSyncNow = () => {
+    syncManager.forceSyncNow();
+    addNotification('info', 'Force sync triggered! Processing all pending reviews...');
+  };
+
+  const handleChangeInterval = (intervalMs: number) => {
+    syncManager.setInterval(intervalMs);
+    setSyncStatus(syncManager.getStatus());
+    
+    const intervalLabel = intervalMs === 30 * 1000 ? '30 seconds' 
+      : intervalMs === 2 * 60 * 1000 ? '2 minutes'
+      : '2 hours';
+    
+    addNotification('info', `Sync interval changed to ${intervalLabel}`);
+  };
+
+  const handleClearLogs = () => {
+    setSyncLogs([]);
+    addNotification('success', 'Debug logs cleared');
+  };
+
+  // Notification Dropdown handlers
+  const handleMarkNotificationAsRead = (id: string) => {
+    setAppNotifications(prev =>
+      prev.map(n => n.id === id ? { ...n, isRead: true } : n)
+    );
+  };
+
+  const handleMarkAllNotificationsAsRead = () => {
+    setAppNotifications(prev =>
+      prev.map(n => ({ ...n, isRead: true }))
+    );
+  };
+
+  const handleClearAllNotifications = () => {
+    setAppNotifications([]);
+    setIsNotificationDropdownOpen(false);
+  };
+
+  // Photo category grouping
+  const photosByCategory = locationPhotos.reduce((acc, photo) => {
+    const category = photo.category || 'ADDITIONAL';
+    if (!acc[category]) acc[category] = [];
+    acc[category].push(photo);
+    return acc;
+  }, {} as Record<string, BusinessPhoto[]>);
+
+  const filteredPhotos = selectedPhotoCategory === 'ALL'
+    ? locationPhotos
+    : photosByCategory[selectedPhotoCategory] || [];
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white dark:bg-gray-900 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <Loader className="w-12 h-12 animate-spin text-[#f45a4e] mx-auto mb-4" />
+          <p className="text-gray-600 dark:text-gray-400">Loading Google Business Profile...</p>
+        </div>
       </div>
     );
   }
 
-  const renderStars = (rating: number) => {
-    return (
-      <div className="flex items-center gap-0.5">
-        {[1, 2, 3, 4, 5].map((i) => (
-          <Star
-            key={i}
-            size={16}
-            className={i <= rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}
-          />
-        ))}
-      </div>
-    );
-  };
-
-  const getHoursDisplay = () => {
-    if (!location.regularHours?.periods) return [];
-    return location.regularHours.periods.slice(0, 3);
-  };
-
-  const isOpenNow = location.openInfo?.status === 'OPEN';
-  const photoCategories = ['ALL', 'EXTERIOR', 'INTERIOR', 'FOOD_AND_DRINK', 'TEAM'];
-  const filteredPhotos = selectedPhotoCategory === 'ALL' 
-    ? locationPhotos 
-    : locationPhotos.filter(p => p.category === selectedPhotoCategory);
-
+  // Unread notification count
+  const unreadNotificationCount = appNotifications.filter(n => !n.isRead).length;
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-900">
-      {/* Notifications */}
-      <div className="fixed top-20 right-4 z-50 space-y-2 max-w-md">
-        {notifications.map((notification) => (
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      {/* Toast Notifications */}
+      <div className="fixed top-4 right-4 z-50 space-y-2">
+        {notifications.map((notif) => (
           <div
-            key={notification.id}
-            className={`flex items-start gap-3 p-4 rounded-lg shadow-lg border animate-slide-in ${
-              notification.type === 'success'
-                ? 'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-800'
-                : notification.type === 'error'
-                ? 'bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800'
-                : notification.type === 'warning'
-                ? 'bg-yellow-50 dark:bg-yellow-900/30 border-yellow-200 dark:border-yellow-800'
-                : 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800'
+            key={notif.id}
+            className={`px-4 py-3 rounded-lg shadow-lg border animate-slide-in-right max-w-md ${
+              notif.type === 'success' ? 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200' :
+              notif.type === 'error' ? 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200' :
+              notif.type === 'warning' ? 'bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-200' :
+              'bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-200'
             }`}
           >
-            {notification.type === 'success' && <CheckCircle size={20} className="text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />}
-            {notification.type === 'error' && <AlertCircle size={20} className="text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />}
-            {notification.type === 'warning' && <AlertCircle size={20} className="text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />}
-            {notification.type === 'info' && <Loader size={20} className="text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5 animate-spin" />}
-            <p className={`text-sm font-medium ${
-              notification.type === 'success'
-                ? 'text-green-800 dark:text-green-300'
-                : notification.type === 'error'
-                ? 'text-red-800 dark:text-red-300'
-                : notification.type === 'warning'
-                ? 'text-yellow-800 dark:text-yellow-300'
-                : 'text-blue-800 dark:text-blue-300'
-            }`}>
-              {notification.message}
-            </p>
+            <p className="text-sm font-medium">{notif.message}</p>
           </div>
         ))}
+      </div>
+
+      {/* Google Business Profile UI */}
+      <div className="max-w-7xl mx-auto">
+        {/* Header Section */}
+        <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+          <div className="px-6 py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <img
+src={locationPhotos.find(p => p.category === 'LOGO')?.url || 'https://via.placeholder.com/80'}
+                  alt={location.locationName}
+                  className="w-20 h-20 rounded-lg object-cover border-2 border-gray-200 dark:border-gray-700"
+                />
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{location.locationName}</h1>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-yellow-500 font-semibold">{avgRating.toFixed(1)}</span>
+                    <div className="flex">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <Star
+                          key={star}
+                          size={16}
+                          className={star <= Math.round(avgRating) ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}
+                        />
+                      ))}
+                    </div>
+                    <span className="text-sm text-gray-600 dark:text-gray-400">({reviews.length} reviews)</span>
+                  </div>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{location.primaryCategory?.displayName}</p>
+                </div>
+              </div>
+              
+              {/* Notification Bell */}
+              <div className="relative">
+                <button
+                  onClick={() => setIsNotificationDropdownOpen(!isNotificationDropdownOpen)}
+                  className="relative p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                >
+                  <Bell size={24} className="text-gray-600 dark:text-gray-400" />
+                  {unreadNotificationCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 flex items-center justify-center rounded-full font-bold">
+                      {unreadNotificationCount}
+                    </span>
+                  )}
+                </button>
+                
+                <NotificationDropdown
+                  notifications={appNotifications}
+                  isOpen={isNotificationDropdownOpen}
+                  onClose={() => setIsNotificationDropdownOpen(false)}
+                  onMarkAsRead={handleMarkNotificationAsRead}
+                  onMarkAllAsRead={handleMarkAllNotificationsAsRead}
+                  onClearAll={handleClearAllNotifications}
+                />
+              </div>
+            </div>
+
+            {/* Quick Info */}
+            <div className="flex flex-wrap gap-4 mt-4 text-sm">
+              <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                <MapPin size={16} />
+                <span>{location.address?.addressLines?.join(', ') || 'Address not available'}</span>
+              </div>
+              {location.primaryPhone && (
+                <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                  <Phone size={16} />
+                  <span>{location.primaryPhone}</span>
+                </div>
+              )}
+              {location.websiteUri && (
+                <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                  <Globe size={16} />
+                  <a href={location.websiteUri} target="_blank" rel="noopener noreferrer" className="hover:text-[#f45a4e]">
+                    Website
+                  </a>
+                </div>
+              )}
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-3 mt-4">
+              <button
+                onClick={() => setIsReviewModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#f45a4e] to-[#e53e3e] text-white rounded-lg hover:shadow-lg transition-all"
+              >
+                <Star size={16} />
+                Write a review
+              </button>
+              <button
+                onClick={() => setIsQuestionModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600"
+              >
+                <MessageCircle size={16} />
+                Ask a question
+              </button>
+              <button className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600">
+                <Share2 size={16} />
+                Share
+              </button>
+              <button className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600">
+                <Bookmark size={16} />
+                Save
+              </button>
+            </div>
+          </div>
+
+          {/* Tabs */}
+          <div className="flex gap-8 px-6 border-t border-gray-200 dark:border-gray-700">
+            {[
+              { id: 'overview', label: 'Overview', badge: null },
+              { id: 'reviews', label: 'Reviews', badge: unreadReviews > 0 ? unreadReviews : null },
+              { id: 'about', label: 'About', badge: null },
+              { id: 'photos', label: 'Photos', badge: locationPhotos.length },
+              { id: 'qa', label: 'Q&A', badge: questions.length }
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`relative py-4 font-medium transition-colors ${
+                  activeTab === tab.id
+                    ? 'text-[#f45a4e] border-b-2 border-[#f45a4e]'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                }`}
+              >
+                {tab.label}
+                {tab.badge !== null && (
+                  <span className="ml-2 px-2 py-0.5 text-xs bg-red-500 text-white rounded-full">
+                    {tab.badge}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Tab Content */}
+        <div className="p-6">
+          {/* Overview Tab */}
+          {activeTab === 'overview' && (
+            <div className="space-y-6">
+              {/* Popular Times */}
+              <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                  <Clock size={20} />
+                  Popular times
+                </h3>
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  <p>Popular times data coming soon...</p>
+                </div>
+              </div>
+
+              {/* Location & Hours */}
+              <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                  <MapPin size={20} />
+                  Location & Hours
+                </h3>
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-gray-700 dark:text-gray-300">{location.address?.addressLines?.join(', ') || 'Address not available'}</p>
+                    <button className="text-[#f45a4e] text-sm mt-2 hover:underline flex items-center gap-1">
+                      <Navigation size={14} />
+                      Get directions
+                    </button>
+                  </div>
+                  {location.regularHours && location.regularHours.periods && (
+                    <div className="space-y-1">
+                      {location.regularHours.periods.map((period, idx) => {
+                        const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                        const dayName = typeof period.openDay === 'number' ? dayNames[period.openDay] : 'Unknown';
+                        return (
+                          <div key={idx} className="flex justify-between text-sm">
+                            <span className="text-gray-600 dark:text-gray-400">{dayName}</span>
+                            <span className="text-gray-900 dark:text-white">
+                              {period.openTime} - {period.closeTime}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Recent Posts */}
+              {locationPosts.length > 0 && (
+                <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Recent posts</h3>
+                  <div className="space-y-4">
+                    {locationPosts.slice(0, 3).map((post) => (
+                      <div key={post.id} className="border-l-4 border-[#f45a4e] pl-4">
+                        <p className="text-gray-700 dark:text-gray-300">{post.summary}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          {new Date(post.createTime).toLocaleDateString()}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Reviews Tab */}
+          {activeTab === 'reviews' && (
+            <div className="space-y-4">
+              {reviews.length === 0 ? (
+                <div className="bg-white dark:bg-gray-800 rounded-lg p-12 border border-gray-200 dark:border-gray-700 text-center">
+                  <Star size={48} className="mx-auto text-gray-300 dark:text-gray-600 mb-4" />
+                  <p className="text-gray-600 dark:text-gray-400">No reviews yet. Be the first to review!</p>
+                </div>
+              ) : (
+                reviews.map((review) => (
+                  <div key={review.reviewId} className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
+                    {/* Reviewer Info */}
+                    <div className="flex items-start gap-4">
+                      <img
+                        src={review.reviewer?.profilePhotoUrl || 'https://via.placeholder.com/48'}
+                        alt={review.reviewer?.displayName || 'Reviewer'}
+                        className="w-12 h-12 rounded-full"
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-semibold text-gray-900 dark:text-white">
+                              {review.reviewer?.displayName || 'Anonymous'}
+                            </p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <div className="flex">
+                                {[1, 2, 3, 4, 5].map((star) => (
+                                  <Star
+                                    key={star}
+                                    size={14}
+                                    className={star <= (review.starRating || 0) ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}
+                                  />
+                                ))}
+                              </div>
+                              <span className="text-xs text-gray-500 dark:text-gray-400">
+                                {new Date(review.createTime).toLocaleDateString()}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <p className="mt-3 text-gray-700 dark:text-gray-300">{review.comment}</p>
+
+                        {/* Owner Response */}
+                        {review.reviewReply ? (
+                          <div className="mt-4 ml-4 pl-4 border-l-2 border-green-500 bg-green-50 dark:bg-green-900/20 rounded p-3">
+                            <div className="flex items-center gap-2 mb-2">
+                              <CheckCircle size={16} className="text-green-600 dark:text-green-400" />
+                              <span className="font-semibold text-sm text-gray-900 dark:text-white">Response from the owner</span>
+                              <span className="text-xs text-gray-500 dark:text-gray-400">
+                                {new Date(review.reviewReply.updateTime).toLocaleDateString()}
+                              </span>
+                            </div>
+                            <p className="text-sm text-gray-700 dark:text-gray-300">{review.reviewReply.comment}</p>
+                          </div>
+                        ) : (
+                          <div className="mt-4 ml-4 pl-4 border-l-2 border-yellow-500 bg-yellow-50 dark:bg-yellow-900/20 rounded p-3">
+                            <div className="flex items-center gap-2">
+                              <Clock size={16} className="text-yellow-600 dark:text-yellow-400" />
+                              <span className="font-semibold text-sm text-gray-900 dark:text-white">Awaiting automated response...</span>
+                            </div>
+                            <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                              This review will be processed during the next background sync
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {/* About Tab */}
+          {activeTab === 'about' && (
+            <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">About</h3>
+              <div className="space-y-4">
+                <div>
+                  <h4 className="font-medium text-gray-900 dark:text-white mb-2">Description</h4>
+                  <p className="text-gray-700 dark:text-gray-300">
+                    {location.profile?.description || 'No description available.'}
+                  </p>
+                </div>
+                <div>
+                  <h4 className="font-medium text-gray-900 dark:text-white mb-2">Services</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {DEFAULT_SEO_KEYWORDS.service.map((service, idx) => (
+                      <span
+                        key={idx}
+                        className="px-3 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-full text-sm"
+                      >
+                        {service}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <h4 className="font-medium text-gray-900 dark:text-white mb-2">Keywords</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {DEFAULT_SEO_KEYWORDS.primary.map((keyword, idx) => (
+                      <span
+                        key={idx}
+                        className="px-3 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 rounded-full text-sm"
+                      >
+                        {keyword}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Photos Tab */}
+          {activeTab === 'photos' && (
+            <div className="space-y-4">
+              {/* Category Filter */}
+              <div className="flex gap-2 overflow-x-auto pb-2">
+                {['ALL', ...Object.keys(photosByCategory)].map((category) => (
+                  <button
+                    key={category}
+                    onClick={() => setSelectedPhotoCategory(category)}
+                    className={`px-4 py-2 rounded-lg whitespace-nowrap text-sm font-medium transition-colors ${
+                      selectedPhotoCategory === category
+                        ? 'bg-[#f45a4e] text-white'
+                        : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    {category.replace(/_/g, ' ')}
+                    {category !== 'ALL' && ` (${photosByCategory[category]?.length || 0})`}
+                  </button>
+                ))}
+              </div>
+
+              {/* Photo Grid */}
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {filteredPhotos.length === 0 ? (
+                  <div className="col-span-full text-center py-12">
+                    <p className="text-gray-500 dark:text-gray-400">No photos in this category</p>
+                  </div>
+                ) : (
+                  filteredPhotos.map((photo) => (
+                    <div
+                      key={photo.id}
+                      className="aspect-square rounded-lg overflow-hidden bg-gray-200 dark:bg-gray-700 hover:scale-105 transition-transform cursor-pointer"
+                    >
+                      <img
+                        src={photo.url}
+                        alt={photo.description || 'Business photo'}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Q&A Tab */}
+          {activeTab === 'qa' && (
+            <div className="space-y-4">
+              {questions.length === 0 ? (
+                <div className="bg-white dark:bg-gray-800 rounded-lg p-12 border border-gray-200 dark:border-gray-700 text-center">
+                  <MessageCircle size={48} className="mx-auto text-gray-300 dark:text-gray-600 mb-4" />
+                  <p className="text-gray-600 dark:text-gray-400">No questions yet. Be the first to ask!</p>
+                </div>
+              ) : (
+                questions.map((qa) => (
+                  <div key={qa.id} className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
+                    {/* Question */}
+                    <div className="flex items-start gap-4">
+                      <img
+                        src={qa.author.profilePhotoUrl}
+                        alt={qa.author.displayName}
+                        className="w-10 h-10 rounded-full"
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold text-gray-900 dark:text-white">{qa.author.displayName}</p>
+                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                            {new Date(qa.createTime).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-gray-700 dark:text-gray-300">{qa.text}</p>
+                        <div className="flex items-center gap-4 mt-3 text-sm">
+                          <button className="flex items-center gap-1 text-gray-600 dark:text-gray-400 hover:text-[#f45a4e]">
+                            <ThumbsUp size={14} />
+                            <span>{qa.upvoteCount}</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Answers */}
+                    {qa.answers && qa.answers.length > 0 && (
+                      <div className="ml-14 mt-4 space-y-4">
+                        {qa.answers.map((answer, idx) => (
+                          <div key={idx} className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                            <div className="flex items-start gap-3">
+                              <img
+                                src={answer.author.profilePhotoUrl}
+                                alt={answer.author.displayName}
+                                className="w-8 h-8 rounded-full"
+                              />
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2">
+                                  <p className="font-semibold text-sm text-gray-900 dark:text-white">
+                                    {answer.author.displayName}
+                                  </p>
+                                  {answer.author.type === 'MERCHANT' && (
+                                    <span className="text-xs bg-[#f45a4e] text-white px-2 py-0.5 rounded">Owner</span>
+                                  )}
+                                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                                    {new Date(answer.createTime).toLocaleDateString()}
+                                  </span>
+                                </div>
+                                <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">{answer.text}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Debug Log Panel - ALWAYS AT BOTTOM */}
+        <DebugLogPanel
+          syncStatus={syncStatus}
+          logs={syncLogs}
+          onForceSyncNow={handleForceSyncNow}
+          onChangeInterval={handleChangeInterval}
+          onClearLogs={handleClearLogs}
+        />
       </div>
 
       {/* Modals */}
@@ -331,469 +837,6 @@ export const GoogleProfileSimulator: React.FC = () => {
           seoKeywords={DEFAULT_SEO_KEYWORDS.primary.slice(0, 3)}
         />
       )}
-
-      {/* Top Bar */}
-      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
-              <span className="text-2xl font-bold text-blue-600">Google</span>
-              <span className="text-gray-600 dark:text-gray-300">| Business Profile Simulator</span>
-            </div>
-            <button className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
-              <Menu size={24} className="text-gray-700 dark:text-gray-300" />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left Column */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Business Header */}
-            <div className="space-y-4">
-              <h1 className="text-4xl font-semibold text-gray-900 dark:text-white">
-                {location.locationName}
-              </h1>
-              
-              <div className="flex items-center gap-3 flex-wrap">
-                <div className="flex items-center gap-1">
-                  {renderStars(Math.round(avgRating))}
-                  <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">
-                    {avgRating.toFixed(1)} ({reviews.length} reviews)
-                  </span>
-                </div>
-                <span className="text-gray-400">•</span>
-                <span className="text-sm text-gray-600 dark:text-gray-400">
-                  {location.primaryCategory?.displayName}
-                </span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                  isOpenNow
-                    ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
-                    : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
-                }`}>
-                  {isOpenNow ? 'Open' : 'Closed'}
-                </span>
-                {location.regularHours?.periods && location.regularHours.periods.length > 0 && (
-                  <span className="text-sm text-gray-600 dark:text-gray-400">
-                    • Closes {location.regularHours.periods[0].closeTime}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex items-center gap-3 flex-wrap">
-              <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-                <Navigation size={18} />
-                <span className="font-medium">Directions</span>
-              </button>
-              <button className="flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                <Globe size={18} className="text-gray-700 dark:text-gray-300" />
-                <span className="font-medium text-gray-700 dark:text-gray-300">Website</span>
-              </button>
-              <button className="flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"></button>
-              <Phone size={18} className="text-gray-700 dark:text-gray-300" />
-                <span className="font-medium text-gray-700 dark:text-gray-300">Call</span>
-              <button className="flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                <Share2 size={18} className="text-gray-700 dark:text-gray-300" />
-                <span className="font-medium text-gray-700 dark:text-gray-300">Share</span>
-              </button>
-              <button className="flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                <Bookmark size={18} className="text-gray-700 dark:text-gray-300" />
-                <span className="font-medium text-gray-700 dark:text-gray-300">Save</span>
-              </button>
-            </div>
-
-            {/* Tabs */}
-            <div className="border-b border-gray-200 dark:border-gray-700">
-              <div className="flex gap-8">
-                {['overview', 'reviews', 'about', 'photos', 'qa'].map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab as any)}
-                    className={`pb-4 font-medium transition-colors capitalize ${
-                      activeTab === tab
-                        ? 'text-blue-600 border-b-2 border-blue-600'
-                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-                    }`}
-                  >
-                    {tab === 'qa' ? 'Q&A' : tab}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Tab Content */}
-            <div className="space-y-6">
-              {/* OVERVIEW TAB */}
-              {activeTab === 'overview' && (
-                <>
-                  {/* Posts */}
-                  {locationPosts.length > 0 && (
-                    <div className="space-y-4">
-                      <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                        Updates from this business
-                      </h2>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {locationPosts.map((post) => (
-                          <div
-                            key={post.id}
-                            className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden hover:shadow-md transition-shadow"
-                          >
-                            {post.media && post.media[0] && (
-                              <img
-                                src={post.media[0].sourceUrl}
-                                alt="Post"
-                                className="w-full h-48 object-cover"
-                              />
-                            )}
-                            <div className="p-4 space-y-3">
-                              <div className="flex items-center gap-2">
-                                {post.topicType === 'EVENT' && (
-                                  <span className="px-2 py-1 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-xs font-medium rounded">
-                                    <Calendar size={12} className="inline mr-1" />
-                                    Event
-                                  </span>
-                                )}
-                                {post.topicType === 'OFFER' && (
-                                  <span className="px-2 py-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs font-medium rounded">
-                                    <Tag size={12} className="inline mr-1" />
-                                    Offer
-                                  </span>
-                                )}
-                                <span className="text-xs text-gray-500 dark:text-gray-400">
-                                  {new Date(post.createTime).toLocaleDateString()}
-                                </span>
-                              </div>
-                              <p className="text-sm text-gray-700 dark:text-gray-300 line-clamp-3">
-                                {post.summary}
-                              </p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Description */}
-                  {location.profile?.description && (
-                    <div className="space-y-2">
-                      <h2 className="text-lg font-semibold text-gray-900 dark:text-white">About</h2>
-                      <p className="text-gray-700 dark:text-gray-300 leading-relaxed">
-                        {location.profile.description}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Amenities */}
-                  {location.labels && location.labels.length > 0 && (
-                    <div className="space-y-3">
-                      <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Amenities</h2>
-                      <div className="flex flex-wrap gap-2">
-                        {location.labels.map((label, index) => (
-                          <span key={index} className="px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 rounded-full text-sm">
-                            {label}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Recent Reviews Preview */}
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Recent reviews</h2>
-                      <button onClick={() => setActiveTab('reviews')} className="text-blue-600 hover:text-blue-700 text-sm font-medium">
-                        See all reviews
-                      </button>
-                    </div>
-                    <div className="space-y-4">
-                      {reviews.slice(0, 2).map((review) => (
-                        <div key={review.reviewId} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-                          <div className="flex items-start gap-3">
-                            <img src={review.reviewer.profilePhotoUrl || ''} alt={review.reviewer.displayName} className="w-10 h-10 rounded-full" />
-                            <div className="flex-1 space-y-2">
-                              <div>
-                                <p className="font-medium text-gray-900 dark:text-white">{review.reviewer.displayName}</p>
-                                <div className="flex items-center gap-2 mt-1">
-                                  {renderStars(review.starRating || 0)}
-                                  <span className="text-sm text-gray-500 dark:text-gray-400">
-                                    {new Date(review.createTime || '').toLocaleDateString()}
-                                  </span>
-                                </div>
-                              </div>
-                              <p className="text-gray-700 dark:text-gray-300 text-sm">{review.comment}</p>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* REVIEWS TAB */}
-              {activeTab === 'reviews' && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                        All reviews ({reviews.length})
-                      </h2>
-                      <div className="flex items-center gap-2 mt-2">
-                        {renderStars(Math.round(avgRating))}
-                        <span className="ml-2 font-medium text-gray-900 dark:text-white">
-                          {avgRating.toFixed(1)}
-                        </span>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => setIsReviewModalOpen(true)}
-                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-                    >
-                      <Plus size={18} />
-                      Write a Review
-                    </button>
-                  </div>
-
-                  <div className="space-y-6">
-                    {reviews.map((review) => (
-                      <div key={review.reviewId} className="border-b border-gray-200 dark:border-gray-700 pb-6 last:border-0">
-                        <div className="flex items-start gap-4">
-                          <img src={review.reviewer.profilePhotoUrl || ''} alt={review.reviewer.displayName} className="w-12 h-12 rounded-full flex-shrink-0" />
-                          <div className="flex-1 space-y-3">
-                            <div>
-                              <p className="font-medium text-gray-900 dark:text-white text-lg">{review.reviewer.displayName}</p>
-                              <div className="flex items-center gap-2 mt-1">
-                                {renderStars(review.starRating || 0)}
-                                <span className="text-sm text-gray-500 dark:text-gray-400">
-                                  {new Date(review.createTime || '').toLocaleDateString()}
-                                </span>
-                              </div>
-                            </div>
-                            <p className="text-gray-700 dark:text-gray-300 leading-relaxed">{review.comment}</p>
-
-                            {review.reviewReply && (
-                              <div className="ml-4 pl-4 border-l-2 border-gray-200 dark:border-gray-700 space-y-2">
-                                <p className="font-medium text-sm text-gray-900 dark:text-white">Response from the owner</p>
-                                <p className="text-sm text-gray-700 dark:text-gray-300">{review.reviewReply.comment}</p>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">
-                                  {new Date(review.reviewReply.updateTime || '').toLocaleDateString()}
-                                </p>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* ABOUT TAB */}
-              {activeTab === 'about' && (
-                <div className="space-y-6">
-                  {location.profile?.description && (
-                    <div className="space-y-2">
-                      <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Description</h2>
-                      <p className="text-gray-700 dark:text-gray-300 leading-relaxed">{location.profile.description}</p>
-                    </div>
-                  )}
-
-                  <div className="space-y-2">
-                    <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Categories</h2>
-                    <div className="flex flex-wrap gap-2">
-                      {location.primaryCategory && (
-                        <span className="px-3 py-1.5 bg-blue-600 text-white rounded-full text-sm font-medium">
-                          {location.primaryCategory.displayName} (Primary)
-                        </span>
-                      )}
-                      {location.additionalCategories?.map((category, index) => (
-                        <span key={index} className="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-full text-sm">
-                          {category.displayName}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* PHOTOS TAB */}
-              {activeTab === 'photos' && (
-                <div className="space-y-6">
-                  <div>
-                    <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-                      Photos ({locationPhotos.length})
-                    </h2>
-                    
-                    <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
-                      {photoCategories.map((category) => (
-                        <button
-                          key={category}
-                          onClick={() => setSelectedPhotoCategory(category)}
-                          className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
-                            selectedPhotoCategory === category
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                          }`}
-                        >
-                          {category.replace('_', ' ')}
-                        </button>
-                      ))}
-                    </div>
-
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                      {filteredPhotos.map((photo) => (
-                        <div key={photo.id} className="relative aspect-square rounded-lg overflow-hidden hover:opacity-90 transition-opacity cursor-pointer group">
-                          <img src={photo.url} alt={photo.description || 'Business photo'} className="w-full h-full object-cover" />
-                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Q&A TAB */}
-              {activeTab === 'qa' && (
-                <div className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                      Questions & Answers ({questions.length})
-                    </h2>
-                    <button 
-                      onClick={() => setIsQuestionModalOpen(true)}
-                      className="flex items-center gap-2 px-4 py-2 border border-blue-600 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg font-medium transition-colors"
-                    >
-                      <Plus size={18} />
-                      Ask a question
-                    </button>
-                  </div>
-
-                  <div className="space-y-6">
-                    {questions.map((qa) => (
-                      <div key={qa.id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 space-y-4">
-                        <div className="flex gap-3">
-                          <img src={qa.author.profilePhotoUrl} alt={qa.author.displayName} className="w-10 h-10 rounded-full flex-shrink-0" />
-                          <div className="flex-1 space-y-2">
-                            <div>
-                              <p className="font-medium text-gray-900 dark:text-white">{qa.author.displayName}</p>
-                              <p className="text-sm text-gray-500 dark:text-gray-400">
-                                {new Date(qa.createTime).toLocaleDateString()}
-                              </p>
-                            </div>
-                            <p className="text-gray-800 dark:text-gray-200 font-medium">
-                              <MessageCircle size={16} className="inline mr-2 text-gray-400" />
-                              {qa.text}
-                            </p>
-                            <div className="flex items-center gap-4 text-sm">
-                              <button className="flex items-center gap-1 text-gray-600 dark:text-gray-400 hover:text-blue-600">
-                                <ThumbsUp size={16} />
-                                <span>{qa.upvoteCount}</span>
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-
-                        {qa.answers && qa.answers.length > 0 && (
-                          <div className="ml-12 pl-4 border-l-2 border-blue-600 space-y-3">
-                            {qa.answers.map((answer, idx) => (
-                              <div key={idx} className="flex gap-3">
-                                <img src={answer.author.profilePhotoUrl} alt={answer.author.displayName} className="w-8 h-8 rounded-full flex-shrink-0" />
-                                <div className="flex-1 space-y-2">
-                                  <div className="flex items-center gap-2">
-                                    <p className="font-medium text-gray-900 dark:text-white text-sm">{answer.author.displayName}</p>
-                                    {answer.author.type === 'MERCHANT' && (
-                                      <span className="px-2 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-xs font-medium rounded">
-                                        Owner
-                                      </span>
-                                    )}
-                                  </div>
-                                  <p className="text-sm text-gray-700 dark:text-gray-300">{answer.text}</p>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Right Column - Business Info */}
-          <div className="lg:col-span-1">
-            <div className="sticky top-24 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6 space-y-6">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Business information</h3>
-
-              {location.address && (
-                <div className="flex gap-3">
-                  <MapPin size={20} className="text-gray-500 dark:text-gray-400 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-medium text-gray-900 dark:text-white">Address</p>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                      {location.address.addressLines?.join(', ')}
-                      <br />
-                      {location.address.locality}, {location.address.administrativeArea} {location.address.postalCode}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {location.primaryPhone && (
-                <div className="flex gap-3">
-                  <Phone size={20} className="text-gray-500 dark:text-gray-400 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-medium text-gray-900 dark:text-white">Phone</p>
-                    <p className="text-sm text-blue-600 hover:underline cursor-pointer mt-1">{location.primaryPhone}</p>
-                  </div>
-                </div>
-              )}
-
-              {location.regularHours && (
-                <div className="flex gap-3">
-                  <Clock size={20} className="text-gray-500 dark:text-gray-400 flex-shrink-0 mt-0.5" />
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
-                      <p className="font-medium text-gray-900 dark:text-white">Hours</p>
-                      <ChevronDown size={16} className="text-gray-500" />
-                    </div>
-                    <div className="mt-2 space-y-1.5">
-                      {getHoursDisplay().map((period, index) => (
-                        <div key={index} className="flex justify-between text-sm">
-                          <span className="text-gray-600 dark:text-gray-400 capitalize">{period.openDay?.toLowerCase()}</span>
-                          <span className="text-gray-900 dark:text-white">{period.openTime} - {period.closeTime}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {location.websiteUri && (
-                <div className="flex gap-3">
-                  <Globe size={20} className="text-gray-500 dark:text-gray-400 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-medium text-gray-900 dark:text-white">Website</p>
-                    <a href={location.websiteUri} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline mt-1 flex items-center gap-1">
-                      {location.websiteUri.replace('https://', '')}
-                      <ExternalLink size={12} />
-                    </a>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   );
 };
