@@ -21,6 +21,420 @@ import type {
  * Mock Google Business Accounts
  * Represents different business ownership scenarios
  */
+
+export interface BusinessPhoto {
+  id: string;
+  name: string;
+  locationId: string;
+  url: string;
+  description?: string;
+  category: 'COVER' | 'LOGO' | 'EXTERIOR' | 'INTERIOR' | 'PRODUCT' | 'FOOD_AND_DRINK' | 'MENU' | 'TEAM' | 'AT_WORK' | 'ADDITIONAL';
+  uploadedBy: string;
+  uploadedAt: string;
+}
+
+export interface BusinessPost {
+  id: string;
+  name: string;
+  locationId: string;
+  languageCode: string;
+  summary: string;
+  callToAction?: {
+    actionType: 'BOOK' | 'ORDER' | 'SHOP' | 'LEARN_MORE' | 'SIGN_UP' | 'CALL';
+    url?: string;
+  };
+  media?: {
+    mediaFormat: 'PHOTO' | 'VIDEO';
+    sourceUrl: string;
+  }[];
+  topicType: 'STANDARD' | 'EVENT' | 'OFFER' | 'ALERT';
+  event?: {
+    title: string;
+    schedule: {
+      startDate: { year: number; month: number; day: number };
+      startTime?: { hours: number; minutes: number };
+      endDate: { year: number; month: number; day: number };
+      endTime?: { hours: number; minutes: number };
+    };
+  };
+  offer?: {
+    couponCode?: string;
+    redeemOnlineUrl?: string;
+    termsConditions?: string;
+  };
+  createTime: string;
+  updateTime: string;
+  state: 'LIVE' | 'REJECTED';
+}
+
+export interface BusinessQA {
+  id: string;
+  name: string;
+  locationId: string;
+  author: {
+    displayName: string;
+    profilePhotoUrl: string;
+    type: 'MERCHANT' | 'USER' | 'GOOGLE';
+  };
+  text: string;
+  createTime: string;
+  updateTime: string;
+  upvoteCount: number;
+  answers?: {
+    author: {
+      displayName: string;
+      profilePhotoUrl: string;
+      type: 'MERCHANT' | 'USER' | 'GOOGLE';
+    };
+    text: string;
+    createTime: string;
+    updateTime: string;
+    upvoteCount: number;
+  }[];
+}
+
+// ========================================
+// NEW MOCK DATA - Add these arrays to your file
+// ========================================
+
+/**
+ * Mock Business Photos for OK Local Coffee House
+ */
+export const mockPhotos: BusinessPhoto[] = [
+  // Cover Photo
+  {
+    id: 'photo-001',
+    name: 'locations/location-001/media/photo-001',
+    locationId: 'location-001',
+    url: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=1200&h=600&fit=crop',
+    description: 'Cozy coffee shop interior with warm lighting',
+    category: 'COVER',
+    uploadedBy: 'owner',
+    uploadedAt: '2025-09-15T10:00:00Z'
+  },
+  // Logo
+  {
+    id: 'photo-002',
+    name: 'locations/location-001/media/photo-002',
+    locationId: 'location-001',
+    url: 'https://ui-avatars.com/api/?name=OK+Local&size=200&background=f45a4e&color=fff&bold=true',
+    description: 'OK Local Coffee House logo',
+    category: 'LOGO',
+    uploadedBy: 'owner',
+    uploadedAt: '2025-09-15T10:00:00Z'
+  },
+  // Exterior Photos
+  {
+    id: 'photo-003',
+    name: 'locations/location-001/media/photo-003',
+    locationId: 'location-001',
+    url: 'https://images.unsplash.com/photo-1559305616-3b04d4f1362a?w=800&h=600&fit=crop',
+    description: 'Storefront exterior with outdoor seating',
+    category: 'EXTERIOR',
+    uploadedBy: 'owner',
+    uploadedAt: '2025-10-01T14:20:00Z'
+  },
+  {
+    id: 'photo-004',
+    name: 'locations/location-001/media/photo-004',
+    locationId: 'location-001',
+    url: 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=800&h=600&fit=crop',
+    description: 'Outdoor patio seating area',
+    category: 'EXTERIOR',
+    uploadedBy: 'owner',
+    uploadedAt: '2025-10-02T09:15:00Z'
+  },
+  // Interior Photos
+  {
+    id: 'photo-005',
+    name: 'locations/location-001/media/photo-005',
+    locationId: 'location-001',
+    url: 'https://images.unsplash.com/photo-1453614512568-c4024d13c247?w=800&h=600&fit=crop',
+    description: 'Coffee bar with espresso machines',
+    category: 'INTERIOR',
+    uploadedBy: 'owner',
+    uploadedAt: '2025-10-03T11:30:00Z'
+  },
+  {
+    id: 'photo-006',
+    name: 'locations/location-001/media/photo-006',
+    locationId: 'location-001',
+    url: 'https://images.unsplash.com/photo-1442512595331-e89e73853f31?w=800&h=600&fit=crop',
+    description: 'Seating area with comfortable chairs',
+    category: 'INTERIOR',
+    uploadedBy: 'owner',
+    uploadedAt: '2025-10-03T11:35:00Z'
+  },
+  // Food & Drink Photos
+  {
+    id: 'photo-007',
+    name: 'locations/location-001/media/photo-007',
+    locationId: 'location-001',
+    url: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=800&h=600&fit=crop',
+    description: 'Signature maple oat latte',
+    category: 'FOOD_AND_DRINK',
+    uploadedBy: 'owner',
+    uploadedAt: '2025-10-05T08:00:00Z'
+  },
+  {
+    id: 'photo-008',
+    name: 'locations/location-001/media/photo-008',
+    locationId: 'location-001',
+    url: 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=800&h=600&fit=crop',
+    description: 'Freshly brewed pour-over coffee',
+    category: 'FOOD_AND_DRINK',
+    uploadedBy: 'owner',
+    uploadedAt: '2025-10-05T08:15:00Z'
+  },
+  {
+    id: 'photo-009',
+    name: 'locations/location-001/media/photo-009',
+    locationId: 'location-001',
+    url: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=800&h=600&fit=crop',
+    description: 'Avocado toast with poached egg',
+    category: 'FOOD_AND_DRINK',
+    uploadedBy: 'owner',
+    uploadedAt: '2025-10-06T10:20:00Z'
+  },
+  {
+    id: 'photo-010',
+    name: 'locations/location-001/media/photo-010',
+    locationId: 'location-001',
+    url: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=800&h=600&fit=crop',
+    description: 'Assorted pastries and baked goods',
+    category: 'FOOD_AND_DRINK',
+    uploadedBy: 'owner',
+    uploadedAt: '2025-10-06T10:25:00Z'
+  },
+  // Team Photos
+  {
+    id: 'photo-011',
+    name: 'locations/location-001/media/photo-011',
+    locationId: 'location-001',
+    url: 'https://images.unsplash.com/photo-1521017432531-fbd92d768814?w=800&h=600&fit=crop',
+    description: 'Our friendly barista team',
+    category: 'TEAM',
+    uploadedBy: 'owner',
+    uploadedAt: '2025-10-08T14:00:00Z'
+  }
+];
+
+/**
+ * Mock Business Posts for OK Local Coffee House
+ */
+export const mockPosts: BusinessPost[] = [
+  // Event Post
+  {
+    id: 'post-001',
+    name: 'locations/location-001/localPosts/post-001',
+    locationId: 'location-001',
+    languageCode: 'en',
+    summary: 'Join us for Live Acoustic Night this Friday! Local artists performing from 7-9 PM. Free entry with any purchase. Reserve your spot! 🎸☕',
+    callToAction: {
+      actionType: 'BOOK',
+      url: 'https://oklocalcoffee.com/events'
+    },
+    media: [{
+      mediaFormat: 'PHOTO',
+      sourceUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&h=600&fit=crop'
+    }],
+    topicType: 'EVENT',
+    event: {
+      title: 'Live Acoustic Night',
+      schedule: {
+        startDate: { year: 2025, month: 10, day: 31 },
+        startTime: { hours: 19, minutes: 0 },
+        endDate: { year: 2025, month: 10, day: 31 },
+        endTime: { hours: 21, minutes: 0 }
+      }
+    },
+    createTime: '2025-10-25T09:00:00Z',
+    updateTime: '2025-10-25T09:00:00Z',
+    state: 'LIVE'
+  },
+  // Offer Post
+  {
+    id: 'post-002',
+    name: 'locations/location-001/localPosts/post-002',
+    locationId: 'location-001',
+    languageCode: 'en',
+    summary: '🎉 Happy Hour Special! Buy any large drink and get a free pastry between 2-4 PM Monday through Friday. Use code HAPPYHOUR at checkout.',
+    callToAction: {
+      actionType: 'ORDER',
+      url: 'https://oklocalcoffee.com/order'
+    },
+    media: [{
+      mediaFormat: 'PHOTO',
+      sourceUrl: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=800&h=600&fit=crop'
+    }],
+    topicType: 'OFFER',
+    offer: {
+      couponCode: 'HAPPYHOUR',
+      termsConditions: 'Valid Monday-Friday 2-4 PM. One per customer.'
+    },
+    createTime: '2025-10-20T10:00:00Z',
+    updateTime: '2025-10-20T10:00:00Z',
+    state: 'LIVE'
+  },
+  // Standard Post
+  {
+    id: 'post-003',
+    name: 'locations/location-001/localPosts/post-003',
+    locationId: 'location-001',
+    languageCode: 'en',
+    summary: 'New seasonal menu alert! ☕🍂 Try our Pumpkin Spice Latte and Cinnamon Apple Pastry. Made with organic ingredients from local farms. Available for a limited time!',
+    callToAction: {
+      actionType: 'ORDER',
+      url: 'https://oklocalcoffee.com/menu'
+    },
+    media: [{
+      mediaFormat: 'PHOTO',
+      sourceUrl: 'https://images.unsplash.com/photo-1572490122747-3968b75cc699?w=800&h=600&fit=crop'
+    }],
+    topicType: 'STANDARD',
+    createTime: '2025-10-15T08:30:00Z',
+    updateTime: '2025-10-15T08:30:00Z',
+    state: 'LIVE'
+  },
+  // Standard Post
+  {
+    id: 'post-004',
+    name: 'locations/location-001/localPosts/post-004',
+    locationId: 'location-001',
+    languageCode: 'en',
+    summary: 'We\'re hiring! Looking for passionate baristas to join our team. Flexible hours, competitive pay, and free coffee! 😊 Apply in-store or through our website.',
+    callToAction: {
+      actionType: 'LEARN_MORE',
+      url: 'https://oklocalcoffee.com/careers'
+    },
+    topicType: 'STANDARD',
+    createTime: '2025-10-10T12:00:00Z',
+    updateTime: '2025-10-10T12:00:00Z',
+    state: 'LIVE'
+  }
+];
+
+/**
+ * Mock Q&A for OK Local Coffee House
+ */
+export const mockQA: BusinessQA[] = [
+  {
+    id: 'qa-001',
+    name: 'locations/location-001/questions/qa-001',
+    locationId: 'location-001',
+    author: {
+      displayName: 'Jennifer Martinez',
+      profilePhotoUrl: 'https://ui-avatars.com/api/?name=Jennifer+Martinez&background=667eea&color=fff',
+      type: 'USER'
+    },
+    text: 'Do you have WiFi available for customers?',
+    createTime: '2025-10-20T14:30:00Z',
+    updateTime: '2025-10-20T16:45:00Z',
+    upvoteCount: 12,
+    answers: [{
+      author: {
+        displayName: 'OK Local Coffee House',
+        profilePhotoUrl: 'https://ui-avatars.com/api/?name=OK+Local&size=200&background=f45a4e&color=fff&bold=true',
+        type: 'MERCHANT'
+      },
+      text: 'Yes! We have free high-speed WiFi available for all customers. The network name is "OKLocal-Guest" and no password is required. Perfect for remote work! ☕💻',
+      createTime: '2025-10-20T16:45:00Z',
+      updateTime: '2025-10-20T16:45:00Z',
+      upvoteCount: 8
+    }]
+  },
+  {
+    id: 'qa-002',
+    name: 'locations/location-001/questions/qa-002',
+    locationId: 'location-001',
+    author: {
+      displayName: 'Mark Thompson',
+      profilePhotoUrl: 'https://ui-avatars.com/api/?name=Mark+Thompson&background=11998e&color=fff',
+      type: 'USER'
+    },
+    text: 'Is outdoor seating pet-friendly?',
+    createTime: '2025-10-18T10:15:00Z',
+    updateTime: '2025-10-18T11:20:00Z',
+    upvoteCount: 18,
+    answers: [{
+      author: {
+        displayName: 'OK Local Coffee House',
+        profilePhotoUrl: 'https://ui-avatars.com/api/?name=OK+Local&size=200&background=f45a4e&color=fff&bold=true',
+        type: 'MERCHANT'
+      },
+      text: 'Absolutely! We love furry friends. 🐕 Our outdoor patio is very pet-friendly and we even have water bowls available. We also offer "pup cups" (whipped cream) for your four-legged companions!',
+      createTime: '2025-10-18T11:20:00Z',
+      updateTime: '2025-10-18T11:20:00Z',
+      upvoteCount: 15
+    }]
+  },
+  {
+    id: 'qa-003',
+    name: 'locations/location-001/questions/qa-003',
+    locationId: 'location-001',
+    author: {
+      displayName: 'Lisa Chen',
+      profilePhotoUrl: 'https://ui-avatars.com/api/?name=Lisa+Chen&background=f093fb&color=fff',
+      type: 'USER'
+    },
+    text: 'Do you have any vegan or dairy-free options?',
+    createTime: '2025-10-15T09:00:00Z',
+    updateTime: '2025-10-15T10:30:00Z',
+    upvoteCount: 22,
+    answers: [{
+      author: {
+        displayName: 'OK Local Coffee House',
+        profilePhotoUrl: 'https://ui-avatars.com/api/?name=OK+Local&size=200&background=f45a4e&color=fff&bold=true',
+        type: 'MERCHANT'
+      },
+      text: 'Yes! We offer oat milk, almond milk, and soy milk at no extra charge. We also have several vegan pastries and food options including our popular vegan avocado toast. Just ask our baristas for recommendations! 🌱',
+      createTime: '2025-10-15T10:30:00Z',
+      updateTime: '2025-10-15T10:30:00Z',
+      upvoteCount: 19
+    }]
+  },
+  {
+    id: 'qa-004',
+    name: 'locations/location-001/questions/qa-004',
+    locationId: 'location-001',
+    author: {
+      displayName: 'Robert Johnson',
+      profilePhotoUrl: 'https://ui-avatars.com/api/?name=Robert+Johnson&background=764ba2&color=fff',
+      type: 'USER'
+    },
+    text: 'What are your most popular drinks?',
+    createTime: '2025-10-12T13:45:00Z',
+    updateTime: '2025-10-12T15:00:00Z',
+    upvoteCount: 9,
+    answers: [{
+      author: {
+        displayName: 'OK Local Coffee House',
+        profilePhotoUrl: 'https://ui-avatars.com/api/?name=OK+Local&size=200&background=f45a4e&color=fff&bold=true',
+        type: 'MERCHANT'
+      },
+      text: 'Great question! Our top sellers are: 1) Maple Oat Latte (customer favorite!), 2) Classic Espresso, 3) Iced Caramel Macchiato, 4) Cold Brew, and 5) Chai Latte. All made with our locally-roasted organic beans! ☕',
+      createTime: '2025-10-12T15:00:00Z',
+      updateTime: '2025-10-12T15:00:00Z',
+      upvoteCount: 11
+    }]
+  },
+  {
+    id: 'qa-005',
+    name: 'locations/location-001/questions/qa-005',
+    locationId: 'location-001',
+    author: {
+      displayName: 'Amanda White',
+      profilePhotoUrl: 'https://ui-avatars.com/api/?name=Amanda+White&background=f45a4e&color=fff',
+      type: 'USER'
+    },
+    text: 'Do you offer gift cards?',
+    createTime: '2025-10-08T11:30:00Z',
+    updateTime: '2025-10-08T11:30:00Z',
+    upvoteCount: 6,
+    answers: []
+  }
+];
+
 export const mockAccounts: BusinessAccount[] = [
   {
     name: "accounts/mock-account-001",

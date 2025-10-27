@@ -20,6 +20,7 @@ import { CommandCenter } from './components/pages/CommandCenter';
 import { Dashboard } from './components/pages/Dashboard';
 import { DatabaseCheck } from './components/pages/DatabaseCheck';
 import { FixProfile } from './components/pages/FixProfile';
+import { GoogleProfileSimulator } from './components/pages/GoogleProfileSimulator';
 import { LocationGoogleProfile } from './components/pages/LocationGoogleProfile';
 import { Locations } from './components/pages/Locations';
 import { Login } from './components/pages/Login';
@@ -36,6 +37,7 @@ import { SettingsGeneral } from './components/pages/SettingsGeneral';
 import { SettingsUsers } from './components/pages/SettingsUsers';
 import { VoiceSearch } from './components/pages/VoiceSearch';
 import { AutomationTestControls } from './components/ui/AutomationTestControls';
+
 
 
 // UI components
@@ -99,6 +101,15 @@ function App() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeSection, setActiveSection] = useState<SectionType>('dashboard');
+  // ✅ NEW: Read section from URL query parameter on initial load
+useEffect(() => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const sectionParam = urlParams.get('section');
+  
+  if (sectionParam) {
+    setActiveSection(sectionParam);
+  }
+}, []); // Empty dependency array = runs once on mount
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showDebugger, setShowDebugger] = useState(false);
   const [loginAsSession, setLoginAsSession] = useState<LoginAsSession | null>(null);
@@ -292,6 +303,9 @@ function App() {
       case 'sample-data':
         component = <SampleDataManager />;
         break;
+        case 'sandbox-google-profile':
+  component = <GoogleProfileSimulator />;
+  break;
       case 'google-profile':
   component = (
     <div className="space-y-6">
@@ -360,11 +374,12 @@ case 'automation-testing':
   };
 
   // Enhanced section change with access validation
+ // Enhanced section change with access validation
   const handleSectionChange = (section: SectionType) => {
     const routeConfig = getRouteConfig(section);
     
-    // Allow mock-data and sample-data even without route config (dev tools)
-    if (!routeConfig && section !== 'mock-data' && section !== 'sample-data') {
+    // Allow mock-data, sample-data, and sandbox-google-profile even without route config (dev tools)
+    if (!routeConfig && section !== 'mock-data' && section !== 'sample-data' && section !== 'sandbox-google-profile') {
       console.warn(`Route config not found for section: ${section}`);
       return;
     }

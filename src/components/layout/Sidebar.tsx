@@ -1,11 +1,12 @@
 // src/components/layout/Sidebar.tsx
-// Updated sidebar with Command Center (admin only) and Reports removed
+// UPDATED VERSION - GBP Simulator opens in new tab, all others normal navigation
 
 import {
   AlertTriangle,
   Brain,
   Database,
-  FileBarChart, // <- ADD THIS LINE
+  Eye,
+  FileBarChart,
   FileText,
   Globe,
   Image,
@@ -23,7 +24,6 @@ import {
 } from 'lucide-react';
 import React from 'react';
 import { Badge } from '../ui/Badge';
-
 
 interface NavItem {
   id: string;
@@ -65,52 +65,51 @@ const settingsItems: NavItem[] = [
   { id: 'customers', label: 'Customers', icon: Users, allowedRoles: ['manager', 'admin'] },
   { id: 'users', label: 'Users', icon: UserCheck, requiredRole: 'admin' },
   
- { 
+  { 
     id: 'ai-reports', 
     label: 'AI Reports', 
     icon: FileBarChart, 
-    requiredRole: 'admin',
-    //badge: 'NEW',
-   // badgeVariant: 'gradient'
+    requiredRole: 'admin'
+  },
+
+  {
+    id: 'sandbox-google-profile',
+    label: 'GBP Simulator',
+    icon: Eye
   },
   
   {
     id: 'google-profile',
     label: 'Google Profile',
-    icon: Link, // or Globe, or CheckCircle
-   // badge: 'Mock',
-   // badgeVariant: 'gradient' as const,
-    requiredRole: 'user' // Available to all users
-  },
-  { id: 'command-center', 
-    label: 'Command Center', 
-    icon: Zap, 
-    requiredRole: 'admin', 
-    //badge: 'LIVE', 
-   // badgeVariant: 'success' 
-  },
-
-  { id: 'mock-data', 
-    label: 'Mock Data', 
-    icon: Database, 
-    requiredRole: 'admin', 
-    //badge: 'DEV', 
-   // badgeVariant: 'info' 
-  },
-
-  { id: 'sample-data', 
-    label: 'Sample Data', 
-    icon: Database, 
-    requiredRole: 'admin',
-    //badge: 'SQL', 
-   // badgeVariant: 'gradient' 
+    icon: Link,
+    requiredRole: 'user'
   },
   
-  { id: 'onboarding', 
+  { 
+    id: 'command-center', 
+    label: 'Command Center', 
+    icon: Zap, 
+    requiredRole: 'admin'
+  },
+
+  { 
+    id: 'mock-data', 
+    label: 'Mock Data', 
+    icon: Database, 
+    requiredRole: 'admin'
+  },
+
+  { 
+    id: 'sample-data', 
+    label: 'Sample Data', 
+    icon: Database, 
+    requiredRole: 'admin'
+  },
+  
+  { 
+    id: 'onboarding', 
     label: 'Onboarding', 
-    icon: UserPlus, 
-    //badge: 'Step-by-step', 
-    //badgeVariant: 'info', 
+    icon: UserPlus,
     allowedRoles: ['manager', 'admin'] 
   },
 ];
@@ -155,12 +154,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
       return null;
     }
     
+    // ✅ NEW: Special handler for clicks - opens GBP Simulator in new tab
+    const handleClick = () => {
+      if (item.id === 'sandbox-google-profile') {
+        // Open GBP Simulator in new tab
+        const currentUrl = window.location.origin;
+        const simulatorUrl = `${currentUrl}/?section=sandbox-google-profile`;
+        window.open(simulatorUrl, '_blank');
+        onClose(); // Still close mobile menu
+      } else {
+        // Normal navigation for all other items
+        onSectionChange(item.id);
+        onClose();
+      }
+    };
+    
     return (
       <button
-        onClick={() => {
-          onSectionChange(item.id);
-          onClose();
-        }}
+        onClick={handleClick}
         className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200 group relative ${
           activeSection === item.id
             ? 'bg-gradient-to-r from-[#f45a4e] to-[#e53e3e] text-white shadow-md'
@@ -188,19 +199,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </button>
     );
   };
-
-  const getRoleDisplayInfo = () => {
-    switch (userRole) {
-      case 'admin':
-        return { label: 'Admin', color: 'from-purple-500 to-purple-600' };
-      case 'manager':
-        return { label: 'Manager', color: 'from-green-500 to-green-600' };
-      default:
-        return { label: 'Customer', color: 'from-[#f45a4e] to-[#e53e3e]' };
-    }
-  };
-
-  const roleInfo = getRoleDisplayInfo();
 
   return (
     <>
