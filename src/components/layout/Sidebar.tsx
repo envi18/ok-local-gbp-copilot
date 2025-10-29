@@ -4,6 +4,7 @@
 import {
   AlertTriangle,
   Brain,
+  Bug,
   Eye,
   FileBarChart,
   FileText,
@@ -70,6 +71,13 @@ const settingsItems: NavItem[] = [
   },
   { id: 'users', label: 'Users', icon: UserCheck, requiredRole: 'admin' },
   
+  { 
+  id: 'settings-bug-reports',  // ✅ ADD THIS ENTIRE BLOCK
+  label: 'Bug Reports', 
+  icon: Bug, 
+  requiredRole: 'admin'
+},
+
   { 
     id: 'ai-reports', 
     label: 'AI Reports', 

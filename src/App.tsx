@@ -20,7 +20,6 @@ import { CommandCenter } from './components/pages/CommandCenter';
 import { Dashboard } from './components/pages/Dashboard';
 import { DatabaseCheck } from './components/pages/DatabaseCheck';
 import { FixProfile } from './components/pages/FixProfile';
-//import { GoogleProfileSimulator } from './components/pages/GoogleProfileSimulator';
 import { LocationGoogleProfile } from './components/pages/LocationGoogleProfile';
 import { Locations } from './components/pages/Locations';
 import { Login } from './components/pages/Login';
@@ -32,12 +31,14 @@ import { PremiumListings } from './components/pages/PremiumListings';
 import { Rankings } from './components/pages/Rankings';
 import { Reviews } from './components/pages/Reviews';
 import { SampleDataManager } from './components/pages/SampleDataManager';
+import { SettingsBugReports } from './components/pages/SettingsBugReports';
 import { SettingsCustomers } from './components/pages/SettingsCustomers';
 import { SettingsGeneral } from './components/pages/SettingsGeneral';
 import { SettingsUsers } from './components/pages/SettingsUsers';
 import { VoiceSearch } from './components/pages/VoiceSearch';
 import { GoogleProfileSimulator } from './components/simulator/GoogleProfileSimulator';
 import { AutomationTestControls } from './components/ui/AutomationTestControls';
+
 
 
 
@@ -286,6 +287,9 @@ useEffect(() => {
       case 'users':
         component = <SettingsUsers />;
         break;
+        case 'settings-bug-reports':
+  component = <SettingsBugReports />;
+  break;
       case 'command-center':
         component = <CommandCenter />;
         break;

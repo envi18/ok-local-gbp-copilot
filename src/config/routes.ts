@@ -115,6 +115,13 @@ export const ROUTE_CONFIG: Record<string, RouteConfig> = {
     description: 'Manage Admin and Manager user accounts'
   },
 
+  'settings-bug-reports': {
+  section: 'settings-bug-reports',
+  label: 'Bug Reports',
+  requiredRole: 'admin',
+  description: 'Internal bug tracking and issue management system'
+},
+
   customers: {
     section: 'customers',
     label: 'Customers',
