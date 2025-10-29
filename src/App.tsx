@@ -21,7 +21,6 @@ import { Dashboard } from './components/pages/Dashboard';
 import { DatabaseCheck } from './components/pages/DatabaseCheck';
 import { FixProfile } from './components/pages/FixProfile';
 //import { GoogleProfileSimulator } from './components/pages/GoogleProfileSimulator';
-import { GoogleProfileSimulator } from './components/pages/GoogleProfileSimulator';
 import { LocationGoogleProfile } from './components/pages/LocationGoogleProfile';
 import { Locations } from './components/pages/Locations';
 import { Login } from './components/pages/Login';
@@ -37,6 +36,7 @@ import { SettingsCustomers } from './components/pages/SettingsCustomers';
 import { SettingsGeneral } from './components/pages/SettingsGeneral';
 import { SettingsUsers } from './components/pages/SettingsUsers';
 import { VoiceSearch } from './components/pages/VoiceSearch';
+import { GoogleProfileSimulator } from './components/simulator/GoogleProfileSimulator';
 import { AutomationTestControls } from './components/ui/AutomationTestControls';
 
 
