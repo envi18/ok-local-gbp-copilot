@@ -4,7 +4,6 @@
 import {
   AlertTriangle,
   Brain,
-  Database,
   Eye,
   FileBarChart,
   FileText,
@@ -20,7 +19,7 @@ import {
   UserCheck,
   UserPlus,
   Users,
-  Zap,
+  Zap
 } from 'lucide-react';
 import React from 'react';
 import { Badge } from '../ui/Badge';
@@ -63,6 +62,12 @@ const managementItems: NavItem[] = [
 const settingsItems: NavItem[] = [
   { id: 'settings', label: 'General', icon: Settings },
   { id: 'customers', label: 'Customers', icon: Users, allowedRoles: ['manager', 'admin'] },
+   { 
+    id: 'onboarding', 
+    label: 'Onboarding', 
+    icon: UserPlus,
+    allowedRoles: ['manager', 'admin'] 
+  },
   { id: 'users', label: 'Users', icon: UserCheck, requiredRole: 'admin' },
   
   { 
@@ -80,10 +85,10 @@ const settingsItems: NavItem[] = [
   
   {
     id: 'google-profile',
-    label: 'Google Profile',
-    icon: Link,
-    requiredRole: 'user'
-  },
+   label: 'Google Profile',
+   icon: Link,
+   requiredRole: 'user'
+ },
   
   { 
     id: 'command-center', 
@@ -92,26 +97,20 @@ const settingsItems: NavItem[] = [
     requiredRole: 'admin'
   },
 
-  { 
-    id: 'mock-data', 
-    label: 'Mock Data', 
-    icon: Database, 
-    requiredRole: 'admin'
-  },
+//  { 
+ //   id: 'mock-data', 
+ //   label: 'Mock Data', 
+  //  icon: Database, 
+ //   requiredRole: 'admin'
+ // },
 
-  { 
-    id: 'sample-data', 
-    label: 'Sample Data', 
-    icon: Database, 
-    requiredRole: 'admin'
-  },
+ // { 
+ //   id: 'sample-data', 
+  //  label: 'Sample Data', 
+  //  icon: Database, 
+ //   requiredRole: 'admin'
+ // },
   
-  { 
-    id: 'onboarding', 
-    label: 'Onboarding', 
-    icon: UserPlus,
-    allowedRoles: ['manager', 'admin'] 
-  },
 ];
 
 export const Sidebar: React.FC<SidebarProps> = ({

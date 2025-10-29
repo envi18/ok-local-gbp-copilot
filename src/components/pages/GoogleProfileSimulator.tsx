@@ -1,6 +1,5 @@
 // src/components/pages/GoogleProfileSimulator.tsx
-// ENHANCED VERSION WITH BACKGROUND SYNC SYSTEM - FIXED FOR CORRECT PROPERTY NAMES
-// Part 1 of 2: Imports, Types, State, and Handlers
+// DATABASE-INTEGRATED VERSION - COMPLETE REPLACEMENT - PART 1 OF 2
 
 import {
   Bell,
@@ -24,7 +23,6 @@ import {
   mockPhotos,
   mockPosts,
   mockQA,
-  mockReviews,
   type BusinessLocation,
   type BusinessPhoto,
   type BusinessPost,
@@ -40,6 +38,9 @@ import {
   type SyncStatus
 } from '../../lib/reviewAutomationService';
 
+import { GBPSimulatorDatabaseService } from '../../lib/gbpSimulatorDatabaseService';
+import { databaseReviewToSimulatorReview, SARAH_THOMPSON_ACCOUNT, simulatorReviewToDatabaseReview } from '../../types/database';
+
 import { DebugLogPanel } from '../ui/DebugLogPanel';
 import { NotificationDropdown, type AppNotification } from '../ui/NotificationDropdown';
 import { ResponsePreviewModal } from '../ui/ResponsePreviewModal';
@@ -51,32 +52,35 @@ interface Notification {
   message: string;
 }
 
-export const GoogleProfileSimulator: React.FC = () => {
+interface GoogleProfileSimulatorProps {
+  locationId?: string;
+}
+
+export const GoogleProfileSimulator: React.FC<GoogleProfileSimulatorProps> = ({ 
+  locationId = SARAH_THOMPSON_ACCOUNT.locationId 
+}) => {
+  const [currentSyncId, setCurrentSyncId] = useState<string | null>(null);
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'reviews' | 'about' | 'photos' | 'qa'>('overview');
   const [selectedPhotoCategory, setSelectedPhotoCategory] = useState<string>('ALL');
   
-  // Modal states
   const [isReviewModalOpen, setIsReviewModalOpen] = useState<boolean>(false);
   const [isQuestionModalOpen, setIsQuestionModalOpen] = useState<boolean>(false);
   const [isResponsePreviewOpen, setIsResponsePreviewOpen] = useState<boolean>(false);
   
-  // Dynamic data states
-  const [reviews, setReviews] = useState<BusinessReview[]>(mockReviews.filter(r => r.name.includes('location-001')));
+  const [reviews, setReviews] = useState<BusinessReview[]>([]);
   const [questions, setQuestions] = useState<BusinessQA[]>(mockQA?.filter(qa => qa.locationId === 'location-001') || []);
   
-  // Processing states
   const [pendingReviewResponse, setPendingReviewResponse] = useState<{
     review: BusinessReview;
     draftedResponse: string;
   } | null>(null);
   
-  // Notification states
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [appNotifications, setAppNotifications] = useState<AppNotification[]>([]);
   const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] = useState<boolean>(false);
   
-  // Background Sync System States
   const [syncManager] = useState(() => new BackgroundSyncManager(SYNC_INTERVAL_PRODUCTION));
   const [syncStatus, setSyncStatus] = useState<SyncStatus>({
     lastSync: null,
@@ -88,7 +92,6 @@ export const GoogleProfileSimulator: React.FC = () => {
   });
   const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
   
-  // Use first mock location
   const location: BusinessLocation = mockLocations[0];
   
   const locationPhotos: BusinessPhoto[] = mockPhotos?.filter(
@@ -99,24 +102,42 @@ export const GoogleProfileSimulator: React.FC = () => {
     post => post.locationId === 'location-001'
   ) || [];
 
-  // Calculate average rating
   const avgRating = reviews.length > 0
     ? reviews.reduce((sum, r) => sum + (r.starRating || 0), 0) / reviews.length
     : 0;
 
-  // Calculate unread reviews (reviews without responses)
   const unreadReviews = reviews.filter(r => !r.reviewReply).length;
 
-  // Initialize background sync system
+  // Load reviews from database
   useEffect(() => {
-    // Set up sync callback
-    syncManager.onSync((processedReviews) => {
-      // Update reviews with generated responses
+    loadReviewsFromDatabase();
+  }, [locationId]);
+
+  const loadReviewsFromDatabase = async () => {
+    try {
+      console.log('[Simulator] Loading reviews from database...');
+      const dbReviews = await GBPSimulatorDatabaseService.getReviewsByLocation(locationId);
+      const simulatorReviews = dbReviews.map(databaseReviewToSimulatorReview);
+      setReviews(simulatorReviews);
+      console.log(`[Simulator] ✅ Loaded ${simulatorReviews.length} reviews from database`);
+      
+      const lastSync = await GBPSimulatorDatabaseService.getLastSync(locationId);
+      if (lastSync && lastSync.started_at) {
+        setLastSyncTime(new Date(lastSync.started_at));
+      }
+    } catch (error) {
+      console.error('[Simulator] Error loading reviews:', error);
+      setReviews([]);
+    }
+  };
+
+  // Initialize background sync
+  useEffect(() => {
+    syncManager.onSync((processedReviews: BusinessReview[]) => {
       setReviews(prev => {
         return prev.map(review => {
           const processed = processedReviews.find(pr => pr.reviewId === review.reviewId);
           if (processed && processed.reviewReply) {
-            // Add notification for auto-responded review
             addAppNotification({
               type: 'automation',
               title: 'Auto-responded to Review',
@@ -129,29 +150,24 @@ export const GoogleProfileSimulator: React.FC = () => {
       });
     });
 
-    // Set up log callback
-    syncManager.onLog((log) => {
-      setSyncLogs(prev => [log, ...prev].slice(0, 50)); // Keep last 50 logs
+    syncManager.onLog((log: SyncLog) => {
+      setSyncLogs(prev => [log, ...prev].slice(0, 50));
       setSyncStatus(syncManager.getStatus());
     });
 
-    // Start background sync
     syncManager.start();
     setSyncStatus(syncManager.getStatus());
 
-    // Cleanup on unmount
     return () => {
       syncManager.stop();
     };
   }, [syncManager]);
 
-  // Simulate loading
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), 300);
     return () => clearTimeout(timer);
   }, []);
 
-  // Auto-dismiss notifications
   useEffect(() => {
     if (notifications.length > 0) {
       const timer = setTimeout(() => {
@@ -161,7 +177,6 @@ export const GoogleProfileSimulator: React.FC = () => {
     }
   }, [notifications]);
 
-  // Helper: Add notification
   const addNotification = (type: Notification['type'], message: string) => {
     const notification: Notification = {
       id: `notif-${Date.now()}`,
@@ -171,7 +186,6 @@ export const GoogleProfileSimulator: React.FC = () => {
     setNotifications(prev => [notification, ...prev]);
   };
 
-  // Helper: Add app notification (for dropdown)
   const addAppNotification = (params: Omit<AppNotification, 'id' | 'timestamp' | 'isRead'>) => {
     const notification: AppNotification = {
       id: `app-notif-${Date.now()}`,
@@ -182,53 +196,62 @@ export const GoogleProfileSimulator: React.FC = () => {
     setAppNotifications(prev => [notification, ...prev]);
   };
 
-  // Handle review submission - POST UNANSWERED FIRST
   const handleReviewSubmit = async (reviewData: {
     starRating: number;
     reviewText: string;
     reviewerName: string;
     reviewerAvatar?: string;
   }) => {
-    // Create new review WITHOUT response
-    const newReview: BusinessReview = {
-      reviewId: `review-${Date.now()}`,
-      name: `locations/location-001/reviews/review-${Date.now()}`,
-      reviewer: {
-        displayName: reviewData.reviewerName,
-        profilePhotoUrl: reviewData.reviewerAvatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + reviewData.reviewerName,
-        isAnonymous: false
-      },
-      starRating: reviewData.starRating,
-      comment: reviewData.reviewText,
-      createTime: new Date().toISOString(),
-      updateTime: new Date().toISOString(),
-      reviewReply: undefined // NO RESPONSE YET - will be added during sync
-    };
+    try {
+      const dbReview = simulatorReviewToDatabaseReview(
+        {
+          customerName: reviewData.reviewerName,
+          rating: reviewData.starRating,
+          reviewText: reviewData.reviewText,
+          customerPhoto: reviewData.reviewerAvatar
+        },
+        locationId
+      );
+      
+      const insertedReview = await GBPSimulatorDatabaseService.insertReview(dbReview);
+      
+      if (!insertedReview) {
+        throw new Error('Failed to insert review');
+      }
 
-    // Add to reviews list immediately (shows UNANSWERED)
-    setReviews(prev => [newReview, ...prev]);
-    
-    // Queue for background processing
-    syncManager.addPendingReview(newReview);
-    
-    // Update sync status
-    setSyncStatus(syncManager.getStatus());
-    
-    // Close modal
-    setIsReviewModalOpen(false);
-    
-    // Show success notification
-    addNotification('success', 'Review posted! It will be processed during the next sync.');
-    
-    // Add app notification
-    addAppNotification({
-      type: 'review',
-      title: 'New Review Submitted',
-      message: `${reviewData.reviewerName} left a ${reviewData.starRating}-star review. Queued for automation.`
-    });
+      console.log('[Simulator] ✅ Review saved to database:', insertedReview.id);
+      
+      const simulatorReview = databaseReviewToSimulatorReview(insertedReview);
+      setReviews(prev => [simulatorReview, ...prev]);
+      
+      syncManager.addPendingReview(simulatorReview);
+      setSyncStatus(syncManager.getStatus());
+      
+      await GBPSimulatorDatabaseService.notifyNewReview(
+        SARAH_THOMPSON_ACCOUNT.organizationId,
+        locationId,
+        insertedReview.id,
+        {
+          customerName: reviewData.reviewerName,
+          rating: reviewData.starRating,
+          requiresApproval: insertedReview.requires_approval || false
+        }
+      );
+      
+      addNotification('success', 'Review posted! Queued for automation.');
+      addAppNotification({
+        type: 'review',
+        title: 'New Review Submitted',
+        message: `${reviewData.reviewerName} left a ${reviewData.starRating}-star review`
+      });
+      
+      setIsReviewModalOpen(false);
+    } catch (error) {
+      console.error('[Simulator] Error submitting review:', error);
+      addNotification('error', 'Failed to submit review. Please try again.');
+    }
   };
 
-  // Handle question submission - FIXED: Changed askerName to authorName
   const handleQuestionSubmit = async (question: {
     questionText: string;
     authorName: string;
@@ -252,7 +275,6 @@ export const GoogleProfileSimulator: React.FC = () => {
     setIsQuestionModalOpen(false);
     addNotification('success', 'Question posted successfully!');
     
-    // Add app notification
     addAppNotification({
       type: 'question',
       title: 'New Question Asked',
@@ -260,11 +282,9 @@ export const GoogleProfileSimulator: React.FC = () => {
     });
   };
 
-  // Handle response approval
   const handleResponseApproval = async () => {
     if (!pendingReviewResponse) return;
     
-    // Update review with approved response
     setReviews(prev => prev.map(r => 
       r.reviewId === pendingReviewResponse.review.reviewId
         ? {
@@ -282,10 +302,32 @@ export const GoogleProfileSimulator: React.FC = () => {
     addNotification('success', 'Response published successfully!');
   };
 
-  // Debug Log Panel handlers
-  const handleForceSyncNow = () => {
-    syncManager.forceSyncNow();
-    addNotification('info', 'Force sync triggered! Processing all pending reviews...');
+  const handleForceSyncNow = async () => {
+    try {
+      const syncHistory = await GBPSimulatorDatabaseService.createSyncHistory({
+        location_id: locationId,
+        sync_type: 'force',
+        status: 'in_progress',
+        started_at: new Date().toISOString(),
+        completed_at: null,
+        duration_ms: null,
+        error_message: null,
+        reviews_processed: 0,
+        reviews_responded: 0,
+        reviews_flagged: 0,
+        log_entries: [],
+        created_by: null
+      });
+      
+      if (syncHistory) {
+        setCurrentSyncId(syncHistory.id);
+      }
+      
+      syncManager.forceSyncNow();
+      addNotification('info', 'Force sync triggered!');
+    } catch (error) {
+      console.error('[Simulator] Error in force sync:', error);
+    }
   };
 
   const handleChangeInterval = (intervalMs: number) => {
@@ -304,7 +346,6 @@ export const GoogleProfileSimulator: React.FC = () => {
     addNotification('success', 'Debug logs cleared');
   };
 
-  // Notification Dropdown handlers
   const handleMarkNotificationAsRead = (id: string) => {
     setAppNotifications(prev =>
       prev.map(n => n.id === id ? { ...n, isRead: true } : n)
@@ -322,7 +363,6 @@ export const GoogleProfileSimulator: React.FC = () => {
     setIsNotificationDropdownOpen(false);
   };
 
-  // Photo category grouping
   const photosByCategory = locationPhotos.reduce((acc, photo) => {
     const category = photo.category || 'ADDITIONAL';
     if (!acc[category]) acc[category] = [];
@@ -345,11 +385,10 @@ export const GoogleProfileSimulator: React.FC = () => {
     );
   }
 
-  // Unread notification count
   const unreadNotificationCount = appNotifications.filter(n => !n.isRead).length;
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Toast Notifications */}
       <div className="fixed top-4 right-4 z-50 space-y-2">
         {notifications.map((notif) => (
           <div
@@ -366,15 +405,13 @@ export const GoogleProfileSimulator: React.FC = () => {
         ))}
       </div>
 
-      {/* Google Business Profile UI */}
       <div className="max-w-7xl mx-auto">
-        {/* Header Section */}
         <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
           <div className="px-6 py-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <img
-src={locationPhotos.find(p => p.category === 'LOGO')?.url || 'https://via.placeholder.com/80'}
+                  src={locationPhotos.find(p => p.category === 'LOGO')?.url || 'https://via.placeholder.com/80'}
                   alt={location.locationName}
                   className="w-20 h-20 rounded-lg object-cover border-2 border-gray-200 dark:border-gray-700"
                 />
@@ -397,7 +434,6 @@ src={locationPhotos.find(p => p.category === 'LOGO')?.url || 'https://via.placeh
                 </div>
               </div>
               
-              {/* Notification Bell */}
               <div className="relative">
                 <button
                   onClick={() => setIsNotificationDropdownOpen(!isNotificationDropdownOpen)}
@@ -422,7 +458,6 @@ src={locationPhotos.find(p => p.category === 'LOGO')?.url || 'https://via.placeh
               </div>
             </div>
 
-            {/* Quick Info */}
             <div className="flex flex-wrap gap-4 mt-4 text-sm">
               <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
                 <MapPin size={16} />
@@ -444,7 +479,6 @@ src={locationPhotos.find(p => p.category === 'LOGO')?.url || 'https://via.placeh
               )}
             </div>
 
-            {/* Action Buttons */}
             <div className="flex gap-3 mt-4">
               <button
                 onClick={() => setIsReviewModalOpen(true)}
@@ -471,7 +505,6 @@ src={locationPhotos.find(p => p.category === 'LOGO')?.url || 'https://via.placeh
             </div>
           </div>
 
-          {/* Tabs */}
           <div className="flex gap-8 px-6 border-t border-gray-200 dark:border-gray-700">
             {[
               { id: 'overview', label: 'Overview', badge: null },
@@ -499,13 +532,9 @@ src={locationPhotos.find(p => p.category === 'LOGO')?.url || 'https://via.placeh
             ))}
           </div>
         </div>
-
-        {/* Tab Content */}
         <div className="p-6">
-          {/* Overview Tab */}
           {activeTab === 'overview' && (
             <div className="space-y-6">
-              {/* Popular Times */}
               <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
                   <Clock size={20} />
@@ -516,7 +545,6 @@ src={locationPhotos.find(p => p.category === 'LOGO')?.url || 'https://via.placeh
                 </div>
               </div>
 
-              {/* Location & Hours */}
               <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
                   <MapPin size={20} />
@@ -549,7 +577,6 @@ src={locationPhotos.find(p => p.category === 'LOGO')?.url || 'https://via.placeh
                 </div>
               </div>
 
-              {/* Recent Posts */}
               {locationPosts.length > 0 && (
                 <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Recent posts</h3>
@@ -568,7 +595,6 @@ src={locationPhotos.find(p => p.category === 'LOGO')?.url || 'https://via.placeh
             </div>
           )}
 
-          {/* Reviews Tab */}
           {activeTab === 'reviews' && (
             <div className="space-y-4">
               {reviews.length === 0 ? (
@@ -579,7 +605,6 @@ src={locationPhotos.find(p => p.category === 'LOGO')?.url || 'https://via.placeh
               ) : (
                 reviews.map((review) => (
                   <div key={review.reviewId} className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
-                    {/* Reviewer Info */}
                     <div className="flex items-start gap-4">
                       <img
                         src={review.reviewer?.profilePhotoUrl || 'https://via.placeholder.com/48'}
@@ -610,7 +635,6 @@ src={locationPhotos.find(p => p.category === 'LOGO')?.url || 'https://via.placeh
                         </div>
                         <p className="mt-3 text-gray-700 dark:text-gray-300">{review.comment}</p>
 
-                        {/* Owner Response */}
                         {review.reviewReply ? (
                           <div className="mt-4 ml-4 pl-4 border-l-2 border-green-500 bg-green-50 dark:bg-green-900/20 rounded p-3">
                             <div className="flex items-center gap-2 mb-2">
@@ -641,7 +665,6 @@ src={locationPhotos.find(p => p.category === 'LOGO')?.url || 'https://via.placeh
             </div>
           )}
 
-          {/* About Tab */}
           {activeTab === 'about' && (
             <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">About</h3>
@@ -665,27 +688,12 @@ src={locationPhotos.find(p => p.category === 'LOGO')?.url || 'https://via.placeh
                     ))}
                   </div>
                 </div>
-                <div>
-                  <h4 className="font-medium text-gray-900 dark:text-white mb-2">Keywords</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {DEFAULT_SEO_KEYWORDS.primary.map((keyword, idx) => (
-                      <span
-                        key={idx}
-                        className="px-3 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 rounded-full text-sm"
-                      >
-                        {keyword}
-                      </span>
-                    ))}
-                  </div>
-                </div>
               </div>
             </div>
           )}
 
-          {/* Photos Tab */}
           {activeTab === 'photos' && (
             <div className="space-y-4">
-              {/* Category Filter */}
               <div className="flex gap-2 overflow-x-auto pb-2">
                 {['ALL', ...Object.keys(photosByCategory)].map((category) => (
                   <button
@@ -703,7 +711,6 @@ src={locationPhotos.find(p => p.category === 'LOGO')?.url || 'https://via.placeh
                 ))}
               </div>
 
-              {/* Photo Grid */}
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                 {filteredPhotos.length === 0 ? (
                   <div className="col-span-full text-center py-12">
@@ -727,7 +734,6 @@ src={locationPhotos.find(p => p.category === 'LOGO')?.url || 'https://via.placeh
             </div>
           )}
 
-          {/* Q&A Tab */}
           {activeTab === 'qa' && (
             <div className="space-y-4">
               {questions.length === 0 ? (
@@ -738,7 +744,6 @@ src={locationPhotos.find(p => p.category === 'LOGO')?.url || 'https://via.placeh
               ) : (
                 questions.map((qa) => (
                   <div key={qa.id} className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
-                    {/* Question */}
                     <div className="flex items-start gap-4">
                       <img
                         src={qa.author.profilePhotoUrl}
@@ -762,7 +767,6 @@ src={locationPhotos.find(p => p.category === 'LOGO')?.url || 'https://via.placeh
                       </div>
                     </div>
 
-                    {/* Answers */}
                     {qa.answers && qa.answers.length > 0 && (
                       <div className="ml-14 mt-4 space-y-4">
                         {qa.answers.map((answer, idx) => (
@@ -799,7 +803,6 @@ src={locationPhotos.find(p => p.category === 'LOGO')?.url || 'https://via.placeh
           )}
         </div>
 
-        {/* Debug Log Panel - ALWAYS AT BOTTOM */}
         <DebugLogPanel
           syncStatus={syncStatus}
           logs={syncLogs}
@@ -809,7 +812,6 @@ src={locationPhotos.find(p => p.category === 'LOGO')?.url || 'https://via.placeh
         />
       </div>
 
-      {/* Modals */}
       <ReviewSubmissionModal
         isOpen={isReviewModalOpen}
         onClose={() => setIsReviewModalOpen(false)}
