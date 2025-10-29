@@ -176,55 +176,69 @@ export const GoogleProfileSimulator: React.FC<GoogleProfileSimulatorProps> = ({
       });
     });
 
-    // Set up log callback - DATABASE: Save sync history
-    syncManager.onLog(async (log) => {
-      setSyncLogs(prev => [log, ...prev].slice(0, 50));
-      setSyncStatus(syncManager.getStatus());
+  // Set up log callback - DATABASE: Save sync history
+syncManager.onLog(async (log) => {
+  setSyncLogs(prev => [log, ...prev].slice(0, 50));
+  setSyncStatus(syncManager.getStatus());
 
-      // DATABASE: Create or update sync history
-      try {
-        if (!currentSyncId) {
-          // FIXED: Create new sync history entry with all required fields
-          const syncRecord = await GBPSimulatorDatabaseService.createSyncHistory({
-            location_id: locationId,
-            sync_type: 'automatic',
-            status: 'in_progress',
-            reviews_processed: 0,
-            reviews_responded: 0,
-            reviews_flagged: 0,
-            started_at: new Date().toISOString(),
-            completed_at: null,
-            duration_ms: null,
-            error_message: null,
-            log_entries: [],
-            created_by: null
-          });
-          // FIXED: Extract just the ID string from the returned object
-          setCurrentSyncId(syncRecord?.id || null);
-        } else {
-          // FIXED: Use 'success' instead of 'completed' to match DatabaseSyncHistory type
-          await GBPSimulatorDatabaseService.updateSyncHistory(currentSyncId, {
-            status: 'success', // Changed from log.success ? 'completed' : 'failed'
-            reviews_processed: 0, // SyncLog doesn't have these properties, use 0 for now
-            reviews_responded: 0,
-            reviews_flagged: 0,
-            completed_at: new Date().toISOString(),
-            duration_ms: 0, // SyncLog doesn't have durationMs
-            log_entries: [
-              {
-                timestamp: log.timestamp,
-                level: 'info', // FIXED: Add required level field
-                message: log.message,
-                details: log.details
-              }
-            ]
-          });
-          setCurrentSyncId(null);
-        }
-      } catch (error) {
-        console.error('[Sync] Failed to save sync history:', error);
-      }
-    });
+  // DATABASE: Create or update sync history based on log type
+  try {
+    // DETECT SYNC START - Create new sync record
+    if (log.message.includes('Running sync') && !currentSyncId) {
+      const syncRecord = await GBPSimulatorDatabaseService.createSyncHistory({
+        location_id: locationId,
+        sync_type: 'automatic',
+        status: 'in_progress',
+        reviews_processed: 0,
+        reviews_responded: 0,
+        reviews_flagged: 0,
+        started_at: new Date().toISOString(),
+        completed_at: null,
+        duration_ms: null,
+        error_message: null,
+        log_entries: [],
+        created_by: null
+      });
+      setCurrentSyncId(syncRecord?.id || null);
+      console.log('[Sync] Created sync record:', syncRecord?.id);
+    } 
+    // DETECT SYNC COMPLETE - Update sync record
+    else if (log.message.includes('Sync complete') && currentSyncId) {
+      // Extract number of reviews processed from message
+      const match = log.message.match(/Processed (\d+) review/);
+      const reviewsProcessed = match ? parseInt(match[1]) : 0;
+      
+      await GBPSimulatorDatabaseService.updateSyncHistory(currentSyncId, {
+        status: 'success',
+        reviews_processed: reviewsProcessed,
+        reviews_responded: reviewsProcessed, // For now, assume all processed were responded to
+        reviews_flagged: 0,
+        completed_at: new Date().toISOString(),
+        duration_ms: null,
+        log_entries: []
+      });
+      console.log('[Sync] Completed sync record:', currentSyncId);
+      setCurrentSyncId(null); // Reset for next sync
+    }
+  // DETECT SYNC ERROR
+else if (log.message.includes('Sync failed') && currentSyncId) {
+  await GBPSimulatorDatabaseService.updateSyncHistory(currentSyncId, {
+    status: 'failed',  // ✅ Changed from 'error' to 'failed'
+    reviews_processed: 0,
+    reviews_responded: 0,
+    reviews_flagged: 0,
+    completed_at: new Date().toISOString(),
+    duration_ms: null,
+    error_message: log.message,
+    log_entries: []
+  });
+  console.log('[Sync] Failed sync record:', currentSyncId);
+  setCurrentSyncId(null);
+}
+  } catch (error) {
+    console.error('[Sync] Failed to save sync history:', error);
+  }
+});
 
     // Start background sync
     syncManager.start();

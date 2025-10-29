@@ -1,157 +1,219 @@
-import { AlertCircle, AlertTriangle, ChevronDown, Clock, Copy, Download, Flag, MessageSquare, MoreVertical, Reply, Search, Settings as SettingsIcon, Share, Star, ThumbsUp } from 'lucide-react';
+// src/components/pages/Reviews.tsx
+// Main Reviews page - modular architecture
+
+import {
+  AlertCircle,
+  AlertTriangle,
+  Loader,
+  MessageSquare,
+  Reply,
+  Search,
+  ThumbsUp
+} from 'lucide-react';
 import React, { useEffect, useState } from 'react';
-import { dataService, type Location, type Profile, type Review } from '../../lib/dataService';
-import { supabase } from '../../lib/supabase';
+import { GBPSimulatorDatabaseService } from '../../lib/gbpSimulatorDatabaseService';
+import type { DatabaseReview } from '../../types/database';
+import { SARAH_THOMPSON_ACCOUNT } from '../../types/database';
+import { ManualResponseSection } from '../reviews/ManualResponseSection';
+import { ReviewApprovalSection } from '../reviews/ReviewApprovalSection';
+import { ReviewCard } from '../reviews/ReviewCard';
+import { getResponseStatus } from '../reviews/ReviewHelpers';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 
 export const Reviews: React.FC = () => {
-  const [reviews, setReviews] = useState<Review[]>([]);
-  const [locations, setLocations] = useState<Location[]>([]);
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [loading, setLoading] = useState(true);
+  // State
+  const [reviews, setReviews] = useState<DatabaseReview[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   
+  // Filter states
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'responded' | 'pending' | 'flagged'>('all');
   const [selectedRating, setSelectedRating] = useState<number | 'all'>('all');
   const [selectedPlatform, setSelectedPlatform] = useState<'all' | 'google' | 'facebook' | 'yelp'>('all');
-  const [selectedLocation, setSelectedLocation] = useState<'all' | string>('all');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards');
-  const [showReplyModal, setShowReplyModal] = useState<string | null>(null);
-  const [replyText, setReplyText] = useState('');
-  const [selectedTemplate, setSelectedTemplate] = useState('');
+  const [searchTerm, setSearchTerm] = useState<string>('');
   
-  // Get More Reviews section state
-  const [showGetMoreReviews, setShowGetMoreReviews] = useState(false);
-  const [reviewPageSettings, setReviewPageSettings] = useState({
-    backgroundColor: '#ffffff',
-    starThreshold: 3, // 3 stars and below go to internal feedback
-    customMessage: '',
-    logoUrl: ''
-  });
-  const [reviewUrl, setReviewUrl] = useState('');
-  const [qrCodeUrl, setQrCodeUrl] = useState('');
-  const [copiedUrl, setCopiedUrl] = useState(false);
+  // Action states
+  const [savingReviewId, setSavingReviewId] = useState<string | null>(null);
+  
+  // Notification state
+  const [notifications, setNotifications] = useState<Array<{
+    type: 'success' | 'error' | 'info';
+    message: string;
+  }>>([]);
 
+  // Load reviews on mount
   useEffect(() => {
-    initializeReviews();
-    generateReviewUrl();
+    loadReviews();
   }, []);
 
-  const initializeReviews = async () => {
+  const loadReviews = async () => {
     try {
       setLoading(true);
       setError(null);
-
-      // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setError('User not authenticated');
-        return;
-      }
-
-      // Initialize user profile
-      const userProfile = await dataService.initializeUserData(user);
-      if (!userProfile) {
-        setError('Failed to initialize user profile');
-        return;
-      }
-      setProfile(userProfile);
-
-      // Get locations and reviews
-      const [locationsData, reviewsData] = await Promise.all([
-        dataService.getLocations(userProfile.organization_id),
-        dataService.getReviews()
-      ]);
-
-      setLocations(locationsData);
-      setReviews(reviewsData);
-
+      
+      const locationId = SARAH_THOMPSON_ACCOUNT.locationId;
+      const data = await GBPSimulatorDatabaseService.getReviewsByLocation(locationId);
+      
+      setReviews(data);
     } catch (err) {
-      console.error('Reviews initialization error:', err);
-      setError('Failed to load reviews');
+      console.error('Failed to load reviews:', err);
+      setError('Failed to load reviews. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const generateReviewUrl = () => {
-    // Generate unique review URL using the new domain
-    const baseUrl = 'https://givereviews.to/';
-    const organizationSlug = profile?.organization_id || 'demo-org';
-    const url = `${baseUrl}${organizationSlug}`;
-    setReviewUrl(url);
+  // Add notification
+  const addNotification = (type: 'success' | 'error' | 'info', message: string) => {
+    const newNotification = { type, message };
+    setNotifications(prev => [...prev, newNotification]);
     
-    // Generate QR code URL (using a QR code service)
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}`;
-    setQrCodeUrl(qrUrl);
+    // Auto-dismiss after 5 seconds
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n !== newNotification));
+    }, 5000);
   };
 
-  const copyToClipboard = async (text: string) => {
+  // APPROVAL HANDLER: Approve AI-generated response
+  const handleApproveResponse = async (review: DatabaseReview, editedText?: string) => {
     try {
-      await navigator.clipboard.writeText(text);
-      setCopiedUrl(true);
-      setTimeout(() => setCopiedUrl(false), 2000);
+      setSavingReviewId(review.id);
+      
+      const responseText = editedText || review.ai_generated_response;
+      
+      if (!responseText) {
+        addNotification('error', 'No response text available');
+        return;
+      }
+      
+      await GBPSimulatorDatabaseService.updateReviewResponse(
+        review.id,
+        responseText
+      );
+      
+      // Update local state
+      setReviews(prev => prev.map(r =>
+        r.id === review.id
+          ? {
+              ...r,
+              response_text: responseText,
+              response_date: new Date().toISOString(),
+              approval_status: 'approved'
+            }
+          : r
+      ));
+      
+      addNotification('success', '✅ Response approved and published!');
     } catch (err) {
-      console.error('Failed to copy:', err);
+      console.error('Failed to approve response:', err);
+      addNotification('error', 'Failed to approve response. Please try again.');
+    } finally {
+      setSavingReviewId(null);
     }
   };
 
-  const downloadQRCode = () => {
-    const link = document.createElement('a');
-    link.href = qrCodeUrl;
-    link.download = 'review-qr-code.png';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  // REJECT HANDLER: Reject AI response and flag for manual
+  const handleRejectResponse = async (review: DatabaseReview) => {
+    try {
+      setSavingReviewId(review.id);
+      
+      // Update database to mark as rejected
+      await GBPSimulatorDatabaseService.updateReviewResponse(
+        review.id,
+        '',
+        'rejected'
+      );
+      
+      // Update local state
+      setReviews(prev => prev.map(r =>
+        r.id === review.id
+          ? {
+              ...r,
+              approval_status: 'rejected',
+              requires_approval: true
+            }
+          : r
+      ));
+      
+      addNotification('info', 'Response rejected. Review flagged for manual response.');
+    } catch (err) {
+      console.error('Failed to reject response:', err);
+      addNotification('error', 'Failed to reject response. Please try again.');
+    } finally {
+      setSavingReviewId(null);
+    }
   };
 
-  const replyTemplates = [
-    { id: 'grateful', name: 'Grateful Response', text: 'Thank you so much for your wonderful review! We\'re thrilled to hear about your positive experience.' },
-    { id: 'apologetic', name: 'Apologetic Response', text: 'We sincerely apologize for not meeting your expectations. We\'d love the opportunity to make this right.' },
-    { id: 'professional', name: 'Professional Response', text: 'Thank you for taking the time to share your feedback. We appreciate your business and look forward to serving you again.' }
-  ];
-
-  const getLocationName = (locationId: string) => {
-    const location = locations.find(loc => loc.id === locationId);
-    return location?.name || 'Unknown Location';
+  // MANUAL RESPONSE HANDLER: Publish manual response
+  const handlePublishManualResponse = async (review: DatabaseReview, responseText: string) => {
+    try {
+      setSavingReviewId(review.id);
+      
+      if (!responseText.trim()) {
+        addNotification('error', 'Response cannot be empty');
+        return;
+      }
+      
+      await GBPSimulatorDatabaseService.updateReviewResponse(
+        review.id,
+        responseText
+      );
+      
+      // Update local state
+      setReviews(prev => prev.map(r =>
+        r.id === review.id
+          ? {
+              ...r,
+              response_text: responseText,
+              response_date: new Date().toISOString(),
+              approval_status: 'approved'
+            }
+          : r
+      ));
+      
+      addNotification('success', '✅ Manual response published successfully!');
+    } catch (err) {
+      console.error('Failed to publish manual response:', err);
+      addNotification('error', 'Failed to publish response. Please try again.');
+    } finally {
+      setSavingReviewId(null);
+    }
   };
 
-  const getResponseStatus = (review: Review): 'responded' | 'pending' | 'flagged' => {
-    if (review.response_text) return 'responded';
-    if (review.rating <= 2) return 'flagged';
-    return 'pending';
-  };
+  // Filter reviews into categories
+  const reviewsNeedingApproval = reviews.filter(r =>
+    r.requires_approval &&
+    r.approval_status === 'pending' &&
+    r.ai_generated_response &&
+    !r.response_text &&
+    r.rating >= 2 && r.rating <= 3
+  );
 
-  const formatTimeAgo = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
-    
-    if (diffInHours < 1) return 'Less than an hour ago';
-    if (diffInHours < 24) return `${diffInHours} hour${diffInHours > 1 ? 's' : ''} ago`;
-    
-    const diffInDays = Math.floor(diffInHours / 24);
-    if (diffInDays < 7) return `${diffInDays} day${diffInDays > 1 ? 's' : ''} ago`;
-    
-    return date.toLocaleDateString();
-  };
+  const reviewsNeedingManualResponse = reviews.filter(r =>
+    r.requires_approval &&
+    !r.response_text &&
+    (r.rating === 1 || r.approval_status === 'rejected')
+  );
 
   const filteredReviews = reviews.filter(review => {
     const responseStatus = getResponseStatus(review);
     const matchesFilter = selectedFilter === 'all' || responseStatus === selectedFilter;
     const matchesRating = selectedRating === 'all' || review.rating === selectedRating;
-    const matchesPlatform = selectedPlatform === 'all' || review.platform === selectedPlatform;
-    const matchesLocation = selectedLocation === 'all' || review.location_id === selectedLocation;
-    const matchesSearch = searchTerm === '' || 
-      (review.author_name && review.author_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (review.text && review.text.toLowerCase().includes(searchTerm.toLowerCase()));
+    const matchesPlatform = selectedPlatform === 'all' || review.source === selectedPlatform;
+    const matchesSearch = searchTerm === '' ||
+      (review.customer_name && review.customer_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (review.review_text && review.review_text.toLowerCase().includes(searchTerm.toLowerCase()));
     
-    return matchesFilter && matchesRating && matchesPlatform && matchesLocation && matchesSearch;
+    // Exclude reviews shown in priority sections
+    const notInPrioritySection = !reviewsNeedingApproval.some(r => r.id === review.id) &&
+                                 !reviewsNeedingManualResponse.some(r => r.id === review.id);
+    
+    return matchesFilter && matchesRating && matchesPlatform && matchesSearch && notInPrioritySection;
   });
 
+  // Calculate stats
   const stats = {
     totalReviews: reviews.length,
     averageRating: reviews.length > 0 ? (reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1) : '0.0',
@@ -161,7 +223,7 @@ export const Reviews: React.FC = () => {
       return reviewDate.toDateString() === today.toDateString();
     }).length,
     responseRate: reviews.length > 0 ? Math.round((reviews.filter(r => r.response_text).length / reviews.length) * 100) : 0,
-    avgResponseTime: '2.3 hours',
+    needsAttention: reviewsNeedingApproval.length + reviewsNeedingManualResponse.length,
     sentiment: {
       positive: reviews.filter(r => r.sentiment === 'positive').length,
       neutral: reviews.filter(r => r.sentiment === 'neutral').length,
@@ -169,23 +231,19 @@ export const Reviews: React.FC = () => {
     }
   };
 
+  // StatCard component
   const StatCard: React.FC<{
     title: string;
     value: string | number;
-    icon: React.ElementType;
+    icon: any;
     gradient: string;
     subtitle?: string;
-    loading?: boolean;
-  }> = ({ title, value, icon: Icon, gradient, subtitle, loading = false }) => (
-    <Card hover>
-      <div className="flex items-center justify-between">
+  }> = ({ title, value, icon: Icon, gradient, subtitle }) => (
+    <Card hover={true}>
+      <div className="flex items-center justify-between p-4">
         <div>
           <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">{title}</p>
-          {loading ? (
-            <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-12"></div>
-          ) : (
-            <p className="text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-          )}
+          <p className="text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
           {subtitle && <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">{subtitle}</p>}
         </div>
         <div className={`p-3 rounded-full ${gradient}`}>
@@ -195,189 +253,47 @@ export const Reviews: React.FC = () => {
     </Card>
   );
 
-  const getPlatformBadge = (platform: string) => {
-    const badges = {
-      google: <Badge variant="info" size="sm">Google</Badge>,
-      facebook: <Badge variant="gradient" size="sm">Facebook</Badge>,
-      yelp: <Badge variant="warning" size="sm">Yelp</Badge>
-    };
-    return badges[platform as keyof typeof badges];
-  };
-
-  const getSentimentBadge = (sentiment: string) => {
-    const badges = {
-      positive: <Badge variant="success" size="sm">Positive</Badge>,
-      neutral: <Badge variant="info" size="sm">Neutral</Badge>,
-      negative: <Badge variant="error" size="sm">Negative</Badge>
-    };
-    return badges[sentiment as keyof typeof badges];
-  };
-
-  const getResponseStatusBadge = (status: string) => {
-    const badges = {
-      responded: <Badge variant="success" size="sm">Responded</Badge>,
-      pending: <Badge variant="warning" size="sm">Pending</Badge>,
-      flagged: <Badge variant="error" size="sm">Flagged</Badge>
-    };
-    return badges[status as keyof typeof badges];
-  };
-
-  const StarRating: React.FC<{ rating: number; size?: number }> = ({ rating, size = 16 }) => (
-    <div className="flex items-center gap-1">
-      {[1, 2, 3, 4, 5].map((star) => (
-        <Star
-          key={star}
-          size={size}
-          className={`${
-            star <= rating ? 'text-yellow-500 fill-current' : 'text-gray-300 dark:text-gray-600'
-          }`}
-        />
-      ))}
-    </div>
-  );
-
-  const generateAvatar = (name: string) => {
-    const initials = name ? name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : 'U';
-    const colors = [
-      'bg-gradient-to-r from-blue-500 to-blue-600',
-      'bg-gradient-to-r from-green-500 to-green-600',
-      'bg-gradient-to-r from-purple-500 to-purple-600',
-      'bg-gradient-to-r from-pink-500 to-pink-600',
-      'bg-gradient-to-r from-indigo-500 to-indigo-600'
-    ];
-    const colorIndex = name ? name.charCodeAt(0) % colors.length : 0;
-    
-    return (
-      <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-medium ${colors[colorIndex]}`}>
-        {initials}
-      </div>
-    );
-  };
-
-  const ReviewCard: React.FC<{ review: Review }> = ({ review }) => {
-    const responseStatus = getResponseStatus(review);
-    const locationName = getLocationName(review.location_id);
-    const timeAgo = formatTimeAgo(review.created_at_external || review.created_at);
-
-    return (
-      <Card hover className="group">
-        <div className="flex items-start gap-4">
-          {generateAvatar(review.author_name || 'Anonymous')}
-          
-          <div className="flex-1 min-w-0">
-            <div className="flex items-start justify-between mb-2">
-              <div>
-                <h4 className="font-semibold text-gray-900 dark:text-white">
-                  {review.author_name || 'Anonymous'}
-                </h4>
-                <div className="flex items-center gap-2 mt-1">
-                  <StarRating rating={review.rating} />
-                  <span className="text-sm text-gray-600 dark:text-gray-400">{timeAgo}</span>
-                  <span className="text-sm text-gray-500 dark:text-gray-500">• {locationName}</span>
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-2">
-                {getPlatformBadge(review.platform)}
-                <Button variant="ghost" size="sm">
-                  <MoreVertical size={16} />
-                </Button>
-              </div>
-            </div>
-
-            {review.text && (
-              <p className="text-gray-700 dark:text-gray-300 mb-3 leading-relaxed">
-                {review.text}
-              </p>
-            )}
-
-            <div className="flex items-center gap-3 mb-3">
-              {getSentimentBadge(review.sentiment)}
-              {getResponseStatusBadge(responseStatus)}
-            </div>
-
-            {review.response_text && (
-              <div className="bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-500 p-3 rounded-r-lg mb-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
-                    <Reply size={12} className="text-white" />
-                  </div>
-                  <span className="text-sm font-medium text-blue-900 dark:text-blue-100">Business Response</span>
-                  {review.responded_at && (
-                    <span className="text-xs text-blue-700 dark:text-blue-300">
-                      • {formatTimeAgo(review.responded_at)}
-                    </span>
-                  )}
-                </div>
-                <p className="text-sm text-blue-800 dark:text-blue-200">{review.response_text}</p>
-              </div>
-            )}
-
-            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowReplyModal(review.id)}
-                disabled={!!review.response_text}
-              >
-                <Reply size={16} />
-                {review.response_text ? 'Edit Reply' : 'Reply'}
-              </Button>
-              <Button variant="ghost" size="sm">
-                <Flag size={16} />
-                Flag
-              </Button>
-              <Button variant="ghost" size="sm">
-                <Share size={16} />
-                Share
-              </Button>
-            </div>
-          </div>
-        </div>
-      </Card>
-    );
-  };
-
   if (loading) {
     return (
-      <div className="space-y-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
-              Review Management
-            </h1>
-            <div className="h-5 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-64 mt-2"></div>
-          </div>
-        </div>
-        
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 lg:gap-6">
-          {[1, 2, 3, 4, 5].map(i => (
-            <StatCard key={i} title="Loading..." value="" icon={MessageSquare} gradient="bg-gray-400" loading />
-          ))}
-        </div>
+      <div className="flex items-center justify-center h-96">
+        <Loader className="animate-spin text-gray-400" size={48} />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="space-y-8">
-        <Card>
-          <div className="text-center py-8">
-            <AlertCircle size={48} className="mx-auto text-red-500 mb-4" />
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">Error Loading Reviews</h2>
-            <p className="text-gray-600 dark:text-gray-400 mb-4">{error}</p>
-            <Button onClick={initializeReviews}>
-              Try Again
-            </Button>
-          </div>
-        </Card>
-      </div>
+      <Card>
+        <div className="text-center py-12">
+          <AlertCircle size={48} className="text-red-500 mx-auto mb-4" />
+          <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">Failed to Load Reviews</h3>
+          <p className="text-gray-600 dark:text-gray-400 mb-4">{error}</p>
+          <Button onClick={loadReviews}>Try Again</Button>
+        </div>
+      </Card>
     );
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
+      {/* Notifications */}
+      {notifications.length > 0 && (
+        <div className="fixed top-20 right-4 z-50 space-y-2">
+          {notifications.map((notification, index) => (
+            <Card
+              key={index}
+              className={`p-4 shadow-lg ${
+                notification.type === 'success' ? 'bg-green-50 dark:bg-green-900/20 border-green-500' :
+                notification.type === 'error' ? 'bg-red-50 dark:bg-red-900/20 border-red-500' :
+                'bg-blue-50 dark:bg-blue-900/20 border-blue-500'
+              }`}
+            >
+              <p className="text-sm font-medium">{notification.message}</p>
+            </Card>
+          ))}
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -385,180 +301,24 @@ export const Reviews: React.FC = () => {
             Review Management
           </h1>
           <p className="text-gray-600 dark:text-gray-400 mt-1">
-            {stats.totalReviews} total reviews • {stats.averageRating} average rating
+            {stats.totalReviews} total reviews • {stats.averageRating} ⭐ average rating
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <Button 
-            variant="primary"
-            onClick={() => setShowGetMoreReviews(!showGetMoreReviews)}
-            className="flex items-center gap-2"
-          >
-            <Star size={16} />
-            Get More Reviews
-            <ChevronDown 
-              size={16} 
-              className={`transition-transform ${showGetMoreReviews ? 'rotate-180' : ''}`} 
-            />
+          {stats.needsAttention > 0 && (
+            <Badge variant="warning" size="lg" pulse={true}>
+              {stats.needsAttention} need attention
+            </Badge>
+          )}
+          <Button variant="secondary" onClick={loadReviews}>
+            <Reply size={16} className="mr-2" />
+            Refresh
           </Button>
         </div>
       </div>
 
-      {/* Get More Reviews Section */}
-      {showGetMoreReviews && (
-        <Card className="overflow-hidden">
-          <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-blue-500 rounded-lg">
-                <Star size={20} className="text-white" />
-              </div>
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                  Review Request Link
-                </h2>
-                <p className="text-gray-600 dark:text-gray-400">
-                  Share this link with customers to collect more reviews
-                </p>
-              </div>
-            </div>
-
-            <div className="grid lg:grid-cols-2 gap-6">
-              {/* URL and QR Code */}
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Your Review Request URL
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={reviewUrl}
-                      readOnly
-                      className="flex-1 px-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-mono"
-                    />
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => copyToClipboard(reviewUrl)}
-                    >
-                      {copiedUrl ? 'Copied!' : <Copy size={16} />}
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-4">
-                  <div className="text-center">
-                    <div className="bg-white p-4 rounded-lg border border-gray-200 dark:border-gray-700 inline-block">
-                      <img 
-                        src={qrCodeUrl} 
-                        alt="QR Code" 
-                        className="w-32 h-32"
-                      />
-                    </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-500 mt-2">
-                      Scan to leave a review
-                    </p>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={downloadQRCode}
-                      className="mt-2"
-                    >
-                      <Download size={14} className="mr-1" />
-                      Download
-                    </Button>
-                  </div>
-                  
-                  <div className="flex-1">
-                    <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
-                      <h4 className="font-medium text-gray-900 dark:text-white mb-2">
-                        How it works:
-                      </h4>
-                      <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
-                        <li>• Customers rate their experience (1-5 stars)</li>
-                        <li>• Positive reviews are directed to Google/Yelp</li>
-                        <li>• Lower ratings provide internal feedback</li>
-                        <li>• Helps maintain higher public ratings</li>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Settings */}
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Star Threshold for Public Reviews
-                  </label>
-                  <select
-                    value={reviewPageSettings.starThreshold}
-                    onChange={(e) => setReviewPageSettings(prev => ({
-                      ...prev,
-                      starThreshold: Number(e.target.value)
-                    }))}
-                    className="w-full px-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value={2}>2 stars and below → Internal feedback</option>
-                    <option value={3}>3 stars and below → Internal feedback</option>
-                    <option value={4}>4 stars and below → Internal feedback</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Page Background Color
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="color"
-                      value={reviewPageSettings.backgroundColor}
-                      onChange={(e) => setReviewPageSettings(prev => ({
-                        ...prev,
-                        backgroundColor: e.target.value
-                      }))}
-                      className="w-12 h-10 rounded border border-gray-200 dark:border-gray-700"
-                    />
-                    <input
-                      type="text"
-                      value={reviewPageSettings.backgroundColor}
-                      onChange={(e) => setReviewPageSettings(prev => ({
-                        ...prev,
-                        backgroundColor: e.target.value
-                      }))}
-                      className="flex-1 px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Custom Message (Optional)
-                  </label>
-                  <textarea
-                    value={reviewPageSettings.customMessage}
-                    onChange={(e) => setReviewPageSettings(prev => ({
-                      ...prev,
-                      customMessage: e.target.value
-                    }))}
-                    rows={3}
-                    placeholder="Add a personal message for your customers..."
-                    className="w-full px-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-
-                <Button variant="primary" className="w-full">
-                  <SettingsIcon size={16} className="mr-2" />
-                  Update Settings
-                </Button>
-              </div>
-            </div>
-          </div>
-        </Card>
-      )}
-
       {/* Quick Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 lg:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard
           title="New Today"
           value={stats.newToday}
@@ -572,9 +332,9 @@ export const Reviews: React.FC = () => {
           gradient="bg-gradient-to-r from-[#11998e] to-[#38ef7d]"
         />
         <StatCard
-          title="Avg Response Time"
-          value={stats.avgResponseTime}
-          icon={Clock}
+          title="Needs Action"
+          value={stats.needsAttention}
+          icon={AlertTriangle}
           gradient="bg-gradient-to-r from-[#f093fb] to-[#f5576c]"
         />
         <StatCard
@@ -593,10 +353,26 @@ export const Reviews: React.FC = () => {
         />
       </div>
 
+      {/* Priority Section 1: AI Approval */}
+      <ReviewApprovalSection
+        reviews={reviewsNeedingApproval}
+        onApprove={handleApproveResponse}
+        onReject={handleRejectResponse}
+        savingReviewId={savingReviewId}
+      />
+
+      {/* Priority Section 2: Manual Response */}
+      <ManualResponseSection
+        reviews={reviewsNeedingManualResponse}
+        onPublish={handlePublishManualResponse}
+        savingReviewId={savingReviewId}
+      />
+
       {/* Filters and Search */}
       <Card>
-        <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
+        <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between p-4">
           <div className="flex flex-wrap items-center gap-3">
+            {/* Search */}
             <div className="relative">
               <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500" />
               <input
@@ -608,6 +384,7 @@ export const Reviews: React.FC = () => {
               />
             </div>
 
+            {/* Status Filter */}
             <select
               value={selectedFilter}
               onChange={(e) => setSelectedFilter(e.target.value as any)}
@@ -619,9 +396,10 @@ export const Reviews: React.FC = () => {
               <option value="flagged">Flagged</option>
             </select>
 
+            {/* Rating Filter */}
             <select
               value={selectedRating}
-              onChange={(e) => setSelectedRating(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+              onChange={(e) => setSelectedRating(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
               className="px-3 py-2 bg-white/50 dark:bg-black/30 backdrop-blur-sm border border-white/30 dark:border-white/20 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#f45a4e] focus:border-transparent"
             >
               <option value="all">All Ratings</option>
@@ -632,6 +410,7 @@ export const Reviews: React.FC = () => {
               <option value="1">1 Star</option>
             </select>
 
+            {/* Platform Filter */}
             <select
               value={selectedPlatform}
               onChange={(e) => setSelectedPlatform(e.target.value as any)}
@@ -642,40 +421,25 @@ export const Reviews: React.FC = () => {
               <option value="facebook">Facebook</option>
               <option value="yelp">Yelp</option>
             </select>
-
-            <select
-              value={selectedLocation}
-              onChange={(e) => setSelectedLocation(e.target.value)}
-              className="px-3 py-2 bg-white/50 dark:bg-black/30 backdrop-blur-sm border border-white/30 dark:border-white/20 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#f45a4e] focus:border-transparent"
-            >
-              <option value="all">All Locations</option>
-              {locations.map(location => (
-                <option key={location.id} value={location.id}>{location.name}</option>
-              ))}
-            </select>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Button
-              variant={viewMode === 'cards' ? 'primary' : 'ghost'}
-              size="sm"
-              onClick={() => setViewMode('cards')}
-            >
-              Cards
-            </Button>
-            <Button
-              variant={viewMode === 'list' ? 'primary' : 'ghost'}
-              size="sm"
-              onClick={() => setViewMode('list')}
-            >
-              List
-            </Button>
+          <div className="text-sm text-gray-600 dark:text-gray-400">
+            Showing {filteredReviews.length} of {reviews.length} reviews
           </div>
         </div>
       </Card>
 
-      {/* Reviews List */}
+      {/* All Other Reviews */}
       <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+            All Reviews
+          </h3>
+          <span className="text-sm text-gray-600 dark:text-gray-400">
+            {filteredReviews.length} review{filteredReviews.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+
         {filteredReviews.length === 0 ? (
           <Card className="text-center py-16">
             <div className="max-w-md mx-auto">
@@ -683,13 +447,12 @@ export const Reviews: React.FC = () => {
                 <MessageSquare size={32} className="text-white" />
               </div>
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
-                {reviews.length === 0 ? 'No Reviews Yet' : 'No Reviews Found'}
+                No Reviews Found
               </h2>
               <p className="text-gray-600 dark:text-gray-400">
-                {reviews.length === 0 
-                  ? 'Customer reviews will appear here once they start coming in.'
-                  : 'No reviews match your current filters. Try adjusting your search criteria.'
-                }
+                {searchTerm || selectedFilter !== 'all' || selectedRating !== 'all' || selectedPlatform !== 'all'
+                  ? 'No reviews match your current filters. Try adjusting your search criteria.'
+                  : 'No reviews yet. New reviews will appear here.'}
               </p>
             </div>
           </Card>
@@ -699,85 +462,6 @@ export const Reviews: React.FC = () => {
           ))
         )}
       </div>
-
-      {/* Reply Modal */}
-      {showReplyModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-          <Card className="w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                Reply to Review
-              </h2>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowReplyModal(null)}
-              >
-                ✕
-              </Button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Response Template
-                </label>
-                <select
-                  value={selectedTemplate}
-                  onChange={(e) => {
-                    setSelectedTemplate(e.target.value);
-                    const template = replyTemplates.find(t => t.id === e.target.value);
-                    if (template) setReplyText(template.text);
-                  }}
-                  className="w-full px-4 py-2 bg-white/50 dark:bg-black/30 backdrop-blur-sm border border-white/30 dark:border-white/20 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#f45a4e] focus:border-transparent"
-                >
-                  <option value="">Select a template...</option>
-                  {replyTemplates.map(template => (
-                    <option key={template.id} value={template.id}>{template.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Your Response
-                </label>
-                <textarea
-                  value={replyText}
-                  onChange={(e) => setReplyText(e.target.value)}
-                  rows={4}
-                  className="w-full px-4 py-3 bg-white/50 dark:bg-black/30 backdrop-blur-sm border border-white/30 dark:border-white/20 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#f45a4e] focus:border-transparent resize-none"
-                  placeholder="Write your response..."
-                />
-                <div className="flex justify-between items-center mt-2">
-                  <span className="text-xs text-gray-500 dark:text-gray-500">
-                    {replyText.length}/500 characters
-                  </span>
-                  <Button variant="ghost" size="sm">
-                    AI Suggest
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-3 mt-6">
-              <Button
-                variant="secondary"
-                className="flex-1"
-                onClick={() => setShowReplyModal(null)}
-              >
-                Cancel
-              </Button>
-              <Button
-                className="flex-1"
-                disabled={!replyText.trim()}
-              >
-                Post Response
-              </Button>
-            </div>
-          </Card>
-        </div>
-      )}
     </div>
   );
 };

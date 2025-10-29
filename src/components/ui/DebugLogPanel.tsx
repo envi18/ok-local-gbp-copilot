@@ -187,12 +187,12 @@ export const DebugLogPanel: React.FC<DebugLogPanelProps> = ({
 
           {/* Recent Activity */}
           <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-            <h4 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-              📊 Recent Activity
-              <span className="text-xs font-normal text-gray-500">
-                (Last {logs.length} events)
-              </span>
-            </h4>
+        <h4 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+  📊 Recent Activity
+  <span className="text-xs font-normal text-gray-500">
+    ({logs.length} events - scroll for more)
+  </span>
+</h4>
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {logs.length === 0 ? (
                 <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
