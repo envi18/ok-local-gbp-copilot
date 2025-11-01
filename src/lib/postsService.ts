@@ -1,7 +1,9 @@
 // src/lib/postsService.ts
 // Database service for Posts management
+// FIXED: Implements Login As pattern for admin impersonation
 
 import type { CreatePostInput, Post, UpdatePostInput } from '../types/posts';
+import { LoginAsService } from './loginAsService';
 import { supabase } from './supabase';
 
 export class PostsService {
@@ -79,16 +81,33 @@ export class PostsService {
 
   /**
    * Create a new post
+   * CRITICAL: Uses Login As pattern for admin impersonation
    */
   static async createPost(input: CreatePostInput): Promise<Post | null> {
     try {
-      // Get current user
+      // Get current authenticated user
       const { data: { user } } = await supabase.auth.getUser();
+
+      if (!user) {
+        console.error('[PostsService] No authenticated user found');
+        throw new Error('No authenticated user found');
+      }
+
+      // CRITICAL: Check for Login As session (admin impersonating user)
+      const loginAsSession = LoginAsService.getActiveSession();
+      const effectiveUserId = loginAsSession?.targetUserId || user.id;
+
+      console.log('[PostsService] Creating post:', {
+        authenticatedUser: user.id,
+        effectiveUser: effectiveUserId,
+        isLoginAs: !!loginAsSession,
+        locationId: input.location_id
+      });
 
       const postData = {
         ...input,
         status: input.status || 'draft',
-        created_by: user?.id,
+        created_by: effectiveUserId,  // ← Uses effective user ID (Login As aware)
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
@@ -101,9 +120,15 @@ export class PostsService {
 
       if (error) {
         console.error('[PostsService] Error creating post:', error);
+        console.error('[PostsService] Post data that failed:', {
+          location_id: postData.location_id,
+          created_by: postData.created_by,
+          status: postData.status
+        });
         throw error;
       }
 
+      console.log('[PostsService] Post created successfully:', data.id);
       return data;
     } catch (error) {
       console.error('[PostsService] createPost failed:', error);

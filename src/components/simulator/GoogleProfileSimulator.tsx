@@ -29,16 +29,22 @@ import {
   simulatorReviewToDatabaseReview
 } from '../../types/database';
 
+// Posts integration
+import { PostsService } from '../../lib/postsService';
+import type { Post } from '../../types/posts';
+
 import { DebugLogPanel } from '../ui/DebugLogPanel';
 import { NotificationDropdown, type AppNotification } from '../ui/NotificationDropdown';
 import { ResponsePreviewModal } from '../ui/ResponsePreviewModal';
 import { ReviewSubmissionModal } from '../ui/ReviewAndQuestionModals';
 
 import { ActionButtons } from './ActionButtons';
+import { AllPostsModal } from './AllPostsModal';
 import { BusinessHeader } from './BusinessHeader';
 import { BusinessInfoSection } from './BusinessInfoSection';
 import { BusinessTabs, type TabType } from './BusinessTabs';
 import { PhotoGallery } from './PhotoGallery';
+import { PostCardSimulator } from './PostCardSimulator';
 import { ReviewCard, type Review } from './ReviewCard';
 import { ReviewSummarySection } from './ReviewSummarySection';
 
@@ -62,9 +68,11 @@ export const GoogleProfileSimulator: React.FC<GoogleProfileSimulatorProps> = ({
   // Modal states
   const [isReviewModalOpen, setIsReviewModalOpen] = useState<boolean>(false);
   const [isResponsePreviewOpen, setIsResponsePreviewOpen] = useState<boolean>(false);
+  const [isAllPostsModalOpen, setIsAllPostsModalOpen] = useState<boolean>(false);
   
   // Dynamic data states - START WITH EMPTY, LOAD FROM DATABASE
   const [reviews, setReviews] = useState<BusinessReview[]>([]);
+  const [posts, setPosts] = useState<Post[]>([]);
   
   // Processing states
   const [pendingReviewResponse, setPendingReviewResponse] = useState<{
@@ -122,6 +130,34 @@ export const GoogleProfileSimulator: React.FC<GoogleProfileSimulatorProps> = ({
     };
 
     loadReviewsFromDatabase();
+  }, [locationId]);
+
+  // DATABASE: Load published posts from database on mount
+  useEffect(() => {
+    const loadPostsFromDatabase = async () => {
+      try {
+        console.log('[GoogleProfileSimulator] Loading posts from database for location:', locationId);
+        const allPosts = await PostsService.getPostsByLocation(locationId);
+        
+        // Filter for published posts only
+        const publishedPosts = allPosts.filter(p => p.status === 'published');
+        
+        // Sort by published date (newest first)
+        const sortedPosts = publishedPosts.sort((a, b) => {
+          const dateA = new Date(a.published_at || a.created_at).getTime();
+          const dateB = new Date(b.published_at || b.created_at).getTime();
+          return dateB - dateA;
+        });
+        
+        console.log('[GoogleProfileSimulator] Loaded published posts:', sortedPosts.length);
+        setPosts(sortedPosts);
+      } catch (error) {
+        console.error('[GoogleProfileSimulator] Failed to load posts from database:', error);
+        // Don't add notification - posts are optional feature
+      }
+    };
+
+    loadPostsFromDatabase();
   }, [locationId]);
 
   // Initialize background sync system
@@ -534,6 +570,33 @@ else if (log.message.includes('Sync failed') && currentSyncId) {
                 </p>
               </div>
 
+              {/* Posts Section - Display published posts */}
+              {posts.length > 0 && (
+                <div className="bg-white rounded-lg">
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">
+                    Posts
+                  </h3>
+                  <div className="space-y-4">
+                    {/* Show first 3 posts */}
+                    {posts.slice(0, 3).map(post => (
+                      <PostCardSimulator key={post.id} post={post} />
+                    ))}
+                    
+                    {/* "See all posts" link if more than 3 */}
+                    {posts.length > 3 && (
+                      <div className="pt-2">
+                        <button 
+                          onClick={() => setIsAllPostsModalOpen(true)}
+                          className="text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
+                        >
+                          See all {posts.length} posts
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Review Summary */}
               <ReviewSummarySection summaries={reviewSummaries} />
 
@@ -634,6 +697,13 @@ else if (log.message.includes('Sync failed') && currentSyncId) {
           seoKeywords={DEFAULT_SEO_KEYWORDS.primary.slice(0, 3)}
         />
       )}
+
+      {/* All Posts Modal */}
+      <AllPostsModal
+        posts={posts}
+        isOpen={isAllPostsModalOpen}
+        onClose={() => setIsAllPostsModalOpen(false)}
+      />
     </div>
   );
 };

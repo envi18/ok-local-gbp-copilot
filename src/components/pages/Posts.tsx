@@ -90,9 +90,40 @@ export const Posts: React.FC = () => {
       const locationId = locations[0].id;
       setLocationId(locationId);
 
-      // Load posts for this location
-      const postsData = await PostsService.getPostsByLocation(locationId);
-      setPosts(postsData);
+// Load posts for this location
+const postsData = await PostsService.getPostsByLocation(locationId);
+
+// 🚀 AUTO-PUBLISH: Check for overdue scheduled posts
+const now = new Date();
+const overdueScheduledPosts = postsData.filter(post => 
+  post.status === 'scheduled' && 
+  post.scheduled_for && 
+  new Date(post.scheduled_for) <= now
+);
+
+if (overdueScheduledPosts.length > 0) {
+  console.log(`🚀 Auto-publishing ${overdueScheduledPosts.length} overdue scheduled posts`);
+  
+  // Auto-publish each overdue post
+  for (const post of overdueScheduledPosts) {
+    try {
+      await PostsService.publishPost(post.id);
+      console.log(`✅ Auto-published: "${post.title}"`);
+      
+      // Add success notification
+      addNotification('success', `📤 Auto-published: "${post.title}"`);
+    } catch (err) {
+      console.error(`❌ Failed to auto-publish: "${post.title}"`, err);
+      addNotification('error', `Failed to auto-publish: "${post.title}"`);
+    }
+  }
+  
+  // Reload posts to get updated statuses
+  const updatedPosts = await PostsService.getPostsByLocation(locationId);
+  setPosts(updatedPosts);
+} else {
+  setPosts(postsData);
+}
 
     } catch (err) {
       console.error('Failed to load posts:', err);

@@ -1,5 +1,6 @@
 // src/components/posts/PostForm.tsx
 // Create/Edit post modal form
+// FIXED: Timezone handling for datetime-local input (including min attribute)
 
 import { Calendar, FileText, Globe, Type, X } from 'lucide-react';
 import React, { useState } from 'react';
@@ -32,6 +33,31 @@ export const PostForm: React.FC<PostFormProps> = ({
   saving = false
 }) => {
   const isEditing = !!post;
+
+  /**
+   * TIMEZONE FIX: Convert ISO string to datetime-local format (YYYY-MM-DDTHH:mm)
+   * This preserves the user's selected local time without timezone conversion
+   */
+  const formatDateTimeLocal = (isoString: string | null | undefined): string => {
+    if (!isoString) return '';
+    
+    const date = new Date(isoString);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  };
+
+  /**
+   * TIMEZONE FIX: Get current local datetime for min attribute
+   * Returns current time in datetime-local format
+   */
+  const getCurrentDateTimeLocal = (): string => {
+    return formatDateTimeLocal(new Date().toISOString());
+  };
 
   // Form state - convert 'failed' status to 'draft' for editing
   const [formData, setFormData] = useState<PostFormData>({
@@ -94,6 +120,31 @@ export const PostForm: React.FC<PostFormProps> = ({
         return newErrors;
       });
     }
+  };
+
+  /**
+   * TIMEZONE FIX: Handle datetime-local input changes
+   * Converts local datetime to ISO string without timezone shift
+   */
+  const handleDateTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value; // Format: "YYYY-MM-DDTHH:mm" (local time)
+    
+    if (!value) {
+      handleChange('scheduled_for', undefined);
+      return;
+    }
+    
+    // Convert local datetime to ISO string
+    // The Date constructor interprets this as local time
+    const date = new Date(value);
+    const isoString = date.toISOString();
+    
+    // Debug logging (can be removed in production)
+    console.log('🕐 User selected (local):', value);
+    console.log('🕐 Converted to ISO:', isoString);
+    console.log('🕐 ISO back to local:', formatDateTimeLocal(isoString));
+    
+    handleChange('scheduled_for', isoString);
   };
 
   return (
@@ -243,6 +294,7 @@ export const PostForm: React.FC<PostFormProps> = ({
                   </div>
                 </label>
 
+                {/* TIMEZONE FIX: Updated datetime-local input with proper conversion AND min attribute */}
                 {formData.status === 'scheduled' && (
                   <div className="ml-7 pl-4 border-l-2 border-gray-300 dark:border-gray-600">
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -251,13 +303,13 @@ export const PostForm: React.FC<PostFormProps> = ({
                     </label>
                     <input
                       type="datetime-local"
-                      value={formData.scheduled_for ? formData.scheduled_for.slice(0, 16) : ''}
-                      onChange={(e) => handleChange('scheduled_for', e.target.value ? new Date(e.target.value).toISOString() : undefined)}
+                      value={formData.scheduled_for ? formatDateTimeLocal(formData.scheduled_for) : ''}
+                      onChange={handleDateTimeChange}
+                      min={getCurrentDateTimeLocal()}
                       className={`w-full px-4 py-2 bg-white/50 dark:bg-black/30 backdrop-blur-sm border ${
                         errors.scheduled_for ? 'border-red-500' : 'border-white/30 dark:border-white/20'
                       } rounded-lg focus:outline-none focus:ring-2 focus:ring-[#f45a4e] focus:border-transparent`}
                       disabled={saving}
-                      min={new Date().toISOString().slice(0, 16)}
                     />
                     {errors.scheduled_for && (
                       <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.scheduled_for}</p>
